@@ -68,14 +68,15 @@ if (file.exists(paste0(dataDir, "TCGALIHC.Rds")) | reproList$downloadingRawData)
                             files.per.chunk = 50)
   
   ### Read and Prepare Downloaded Data
-  TCGADataRaw <- TCGAbiolinks::GDCprepare(queryTCGA,
+  TCGAData <- TCGAbiolinks::GDCprepare(queryTCGA,
                                           directory = dataDir)
 
-  TCGADataRaw <- list(counts = assay(TCGADataRaw),
-                        patient = TCGADataRaw$patient,
-                        group = TCGADataRaw$definition)
+  TCGAData <- list(counts = assay(TCGAData),
+                      patient = TCGAData$patient,
+                      group = TCGAData$definition,
+                      sampleType = TCGAData$sample_type)
   ### Filter relevant data and Save Data to Specified path
-  saveRDS(object = TCGADataRaw,
+  saveRDS(object = TCGAData,
           file = paste0(dataDir, "TCGALIHC.Rds"))
   
   ### Delete Unprepared Data
@@ -89,19 +90,19 @@ We are now checking for duplicate samples and do some initial introduction to th
 
 ```{r Check data}
 ### Create Mask with duplicate Samples
-duplicatedMask <- duplicated(TCGADataRaw$patient)
+duplicatedMask <- duplicated(TCGAData$patient)
 sum(duplicatedMask)
-patientMask <- TCGADataRaw$patient %in% TCGADataRaw$patient[duplicatedMask]
+patientMask <- TCGAData$patient %in% TCGAData$patient[duplicatedMask]
 
 ### The duplicate samples are coming from paired data, for which we delete
 ### the samples corresponding to the tumor.
-patientMaskDelete <- patientMask & TCGADataRaw$group == "Primary Tumor"
+patientMaskDelete <- patientMask & TCGAData$group == "Primary solid Tumor"
 
 ### Let us now compute the normalization factors and plot the MDS of the data
 
 #### Compute EdgeR object
-dge   <- DGEList(counts = TCGADataRaw$counts[,!patientMaskDelete],
-                 group  = TCGADataRaw$group[!patientMaskDelete])
+dge   <- DGEList(counts = TCGAData$counts[,!patientMaskDelete],
+                 group  = TCGAData$group[!patientMaskDelete])
 keep  <- filterByExpr(dge)
 dge   <- dge[keep,,keep.lib.sizes=FALSE]
 dge   <- calcNormFactors(dge)
@@ -122,34 +123,33 @@ ggsave(fileName, MDSPlot)
 
 
 ### Remove Third Sample Type (Recurrent Tumor) and save processed data
-TCGADataRaw$patientMaskDelete <- patientMaskDelete| TCGADataRaw$sample_type == "Recurrent Tumor"
+TCGAData$patientMaskDelete <- patientMaskDelete | TCGAData$sampleType == "Recurrent Tumor"
 
 
-saveRDS(object = TCGADataRaw,
+saveRDS(object = TCGAData,
           file = paste0(dataDir, "TCGALIHC.Rds"))
 
-rm(dge, MDSData, MDSPlot, TCGADataRaw, duplicatedMask, keep, patientMask, 
+rm(dge, MDSData, MDSPlot, TCGAData, duplicatedMask, keep, patientMask, 
    patientMaskDelete)
 ```
+
 
 
 # Ch.4: Parametric Methods
 Now, let us run all parametric models. First, important the packages.
 ```{r Setup Parametric Methods, echo = F}
-### Load Data
-tcgaData <- readRDS(paste0(dataDir, "TCGALIHCProcessed.Rds"))
-if (file.exists(paste0(dataDir, "TCGALIHCResults.Rds"))){
-  LIHCRes <- readRDS(paste0(dataDir, "TCGALIHCResults.Rds"))
-} else {
-  LIHCRes <- list()
-}
+### Load Data and filter
+tcgaDataCleaned <-tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
+tcgaDataCleaned$counts <- tcgaData$counts[,tcgaData$patientMaskDelete]
+tcgaDataCleaned$group  <- tcgaData$group[tcgaData$patientMaskDelete]
 ```
  
 
+
 ```{r Limma}
 ### Initialize DGEList Object
-design <-  model.matrix(~ tcgaData$group)
-dge    <- edgeR::DGEList(counts=tcgaData$counts)
+design <-  model.matrix(~ tcgaDataCleaned$group)
+dge    <-  edgeR::DGEList(counts=tcgaDataCleaned$counts)
 
 ### Normalization (TMM followed by voom w. different spans)
 dge   <- edgeR::calcNormFactors(dge)
@@ -175,8 +175,8 @@ df    <- data.frame(row.names = rownames(tcgaData$counts),
 df[rownames(df) %in% rownames(pVals), 1] <- pVals$pValue
 
 ### Save p-values and write data to disk
-LIHCRes$Limma <- df
-saveRDS(LIHCRes, paste0(dataDir, "TCGALIHCResults.Rds"))
+tcgaData$Results$Limma <- df$pValue
+saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 
 ##### PLOT LIMMA Lines #####
 
@@ -216,11 +216,10 @@ rm(design, df, dge, dgeFiltered, fit, linesDf, linesPlot, pVals, v01,
 ```
 
 
-
 ```{r EdgeR Exact}
 ### Initialize EdgeR object
-design <- model.matrix(~ tcgaData$group)
-dge    <- edgeR::DGEList(counts=tcgaData$counts,
+design <- model.matrix(~ tcgaDataCleaned$group)
+dge    <- edgeR::DGEList(counts=tcgaDataCleaned$counts,
                          group = design[,2])
 
 ### Run EdgeR Pipeline and pad filtered out genes with NA
@@ -229,9 +228,10 @@ dgeDefault <-  edgeR::estimateDisp(dge)
 dgeUnshrunken <- edgeR::estimateDisp(dge, prior.df = 1e-10)
 et  <-  edgeR::exactTest(dgeDefault) 
 
-### Save Data
-LIHCRes$EdgeREt <- et$table %>% dplyr::select(PValue)
-saveRDS(LIHCRes, paste0(dataDir, "TCGALIHCResults.Rds"))
+
+### Save p-values and write data to disk
+tcgaData$Results$EdgeREt <- et$table$PValue
+saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 
 ### Plot Overdispersion vs logCPM
 (BCVPlot <- ggplot() +
@@ -298,21 +298,20 @@ rm(d, d1, design, dgeUnshrunken, p4, pAll, plotBins, plotEst, plotTrue, y, group
 
 
 ```{r EdgeR QLM Test}
-design <- model.matrix(~ tcgaData$group)
+design <- model.matrix(~ tcgaDataCleaned$group)
 ### Normalize Data, Fit Model and Compute tests
 fit <- glmQLFit(dgeDefault, design)
 qlf <- glmQLFTest(fit, coef=2)
-pVals <- qlf$table %>% dplyr::select(PValue)
 
 ### Save Data
-LIHCRes$EdgeRQl <- pVals
-saveRDS(LIHCRes, paste0(dataDir, "TCGALIHCResults.Rds"))
+tcgaData$Results$EdgeRQl <- qlf$table$PValue
+saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 ```
 
 ```{r DESeq2}
 ### Initialize Object
-Y   <- data.frame("treatment" = as.factor(tcgaData$group))
-dds <- DESeq2::DESeqDataSetFromMatrix(tcgaData$counts,
+Y   <- data.frame("treatment" = as.factor(tcgaDataCleaned$group))
+dds <- DESeq2::DESeqDataSetFromMatrix(tcgaDataCleaned$counts,
                                       colData = Y,
                                       design = ~ treatment)
 ### Run DESeq2 Pipeline and Extract Results
@@ -321,43 +320,43 @@ topGenes <- as.data.frame(DESeq2::results(dds, alpha = 1-1e-15,
                                           pAdjustMethod = "none",
                                           independentFiltering=FALSE)
                           )
-### Save Data
-LIHCRes$DESeq2 <- topGenes %>% dplyr::select(pvalue)
-saveRDS(LIHCRes, paste0(dataDir, "TCGALIHCResults.Rds"))
+
+tcgaData$Results$DESeq2 <- qlf$table$PValue
+saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 ```
 
 # Ch. 5 Non-Parametric Methods
 
 ```{r MW Test}
 ### Normalize Data
-groupMask <-  tcgaData$group == tcgaData$group[1] #Makes Data Binary
-dge <- edgeR::DGEList(counts= tcgaData$counts)
+groupMask <-  tcgaDataCleaned$group == tcgaDataCleaned$group[1] #Makes Data Binary
+dge <- edgeR::DGEList(counts= tcgaDataCleaned$counts)
 dge <- edgeR::calcNormFactors(dge, method="TMM")
 
 ### compute normalized CPM, rounded to account for noise in ties
 dgeCpm <- round(edgeR::cpm(dge), 1)
 
 ### Apply Wilcoxon Test to All Genes using the created mask and Save Data
-LIHCRes$MW <- sapply(1:nrow(dgeCpm), function(i) {
+tcgaData$Results$MW <- sapply(1:nrow(dgeCpm), function(i) {
     wilcox.test(dgeCpm[i, groupMask], dgeCpm[i, !groupMask])$p.value
 })
-saveRDS(LIHCRes, paste0(dataDir, "TCGALIHCResults.Rds"))
+saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 ```
 
 
 ```{r Direct Permutation Test}
-nFlips <- 2000
-rn <- row.names(tcgaData$counts)
+nFlips <- 1000
+rn <- row.names(tcgaDataCleaned$counts)
 
 ### Normalize Data
-d  <- edgeR::DGEList(counts = tcgaData$counts)
+d  <- edgeR::DGEList(counts = tcgaDataCleaned$counts)
 d  <- edgeR::calcNormFactors(d)
 os <- edgeR::getOffset(d)
 X  <- d$counts * d$samples$norm.factors
-Y  <- tcgaData$group == tcgaData$group[1]
+Y  <- tcgaDataCleaned$group == tcgaDataCleaned$group[1]
 
 t0 <- Sys.time()
-pVals <- sapply(1:nrow(tcgaData$counts), function(i){
+pVals <- sapply(1:nrow(tcgaDataCleaned$counts), function(i){
     ### print progress w. time estimate
     if(i %% 50 == 0){PrintProgress(i, nrow(X), t0)}
 
@@ -371,8 +370,8 @@ pVals <- sapply(1:nrow(tcgaData$counts), function(i){
     return(pPerm)
   })
 
-LIHCRes$DP <- pVals
-saveRDS(LIHCRes, paste0(dataDir, "TCGALIHCResults.Rds"))
+tcgaData$Results$DP <- pVals
+saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 ```
 
 ```{r Flipscores}
