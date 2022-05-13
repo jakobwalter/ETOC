@@ -414,7 +414,7 @@ LIHCRes <- as.data.frame(tcgaData$Results)
 colnames(LIHCRes) <- namesList
 
 ### Compute Rejected Genes and print number of Rejections for all Methods
-LIHCResDE <- LIHCRes <= 0.01
+LIHCResDE <- LIHCRes <= 0.05
 LIHCResDE[is.na(LIHCResDE)] <- F
 colSums(LIHCResDE, na.rm = T)
 ftable(as.data.frame(LIHCResDE))
