@@ -3,7 +3,7 @@ title: "R Notebook"
 output: html_notebook
 ---
 
-This Notebook is structured as follows: First, we will download the data from TCGA. Then, we will do an initial data analysis. Lastly, we will run a of our packages on the data.
+# 1. Downloading and Preprocessing Data
 
 
 ```{r, results = FALSE}
@@ -38,12 +38,7 @@ dataDir <- "../data/"
 
 rm(reproAll)
 ```
-
-# Ch. 1
-## Getting Data
-In a first step, we load the data. We downloaded it from TCGA, but saved it
-and distributed it with the package for ease of use and reproducibility
-
+## 1.1 Downloading and Saving Data
 
 ```{r}
 ### First check if data already exists locally.
@@ -86,7 +81,6 @@ if (file.exists(paste0(dataDir, "TCGALIHC.Rds")) | reproList$downloadingRawData)
 ```
 
 
-We are now checking for duplicate samples and do some initial introduction to the dataset.
 
 ```{r Check data}
 ### Create Mask with duplicate Samples
@@ -140,8 +134,8 @@ Now, let us run all parametric models. First, important the packages.
 ```{r Setup Parametric Methods, echo = F}
 ### Load Data and filter
 tcgaDataCleaned <-tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
-tcgaDataCleaned$counts <- tcgaData$counts[,tcgaData$patientMaskDelete]
-tcgaDataCleaned$group  <- tcgaData$group[tcgaData$patientMaskDelete]
+tcgaDataCleaned$counts <- tcgaData$counts[,!tcgaData$patientMaskDelete]
+tcgaDataCleaned$group  <- tcgaData$group[!tcgaData$patientMaskDelete]
 ```
  
 
@@ -372,31 +366,33 @@ pVals <- sapply(1:nrow(tcgaDataCleaned$counts), function(i){
 
 tcgaData$Results$DP <- pVals
 saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
+
+rm(d, dds, dge, dgeCPM, dgeDefault, X, pVals)
 ```
 
 ```{r Flipscores}
 ### Compute Offsets using EdgeR
-rn <- row.names(tcgaData$counts)
-d  <- edgeR::DGEList(counts = tcgaData$counts)
+rn <- row.names(tcgaDataCleaned$counts)
+d  <- edgeR::DGEList(counts = tcgaDataCleaned$counts)
 d  <- edgeR::calcNormFactors(d)
 os <- edgeR::getOffset(d)
 
 ### Prepare Data
-Y <- (tcgaData$group == tcgaData$group[1])*2-1 # Data being encoded (-1, 1)
+Y <- (tcgaDataCleaned$group == tcgaDataCleaned$group[1])*2-1 # Data being encoded (-1, 1)
 
 
 ### Loop through Columns and apply Flipscores test to each
 t0 <- Sys.time()
-pVals <- sapply(1:nrow(tcgaData$counts), 
+pVals <- sapply(1:nrow(tcgaDataCleaned$counts), 
                  function(i) {
                    ### print progress
-                   if(i %% 50 == 0){PrintProgress(i, nrow(tcgaData$counts), t0)}
+                   if(i %% 50 == 0){PrintProgress(i, nrow(tcgaDataCleaned$counts), t0)}
                    X_i <- d$counts[i,] 
                    suppressWarnings({
                    mod0 <- flipscores::flipscores(X_i ~ Y + offset(os),
                                                   family = poisson,
                                                   score_type = "standardized",
-                                                  n_flips = 400,                #ca. 6h
+                                                  n_flips = 200,                #ca. 6h
                                                   to_be_tested = 2)
                    })
                    coef(summary(mod0))[2, 5] #  extract p-value from summary
@@ -404,17 +400,16 @@ pVals <- sapply(1:nrow(tcgaData$counts),
                  )
 print(Sys.time() - t0)
 
-### Save Results
-LIHCRes$FS <- pVals
-saveRDS(LIHCRes, paste0(dataDir, "TCGALIHCResults.Rds"))
+tcgaData$Results$FsPoisSt <- pVals
+saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 
-rm(d, fileName, os, pVals, rn, t0, Y)
+rm(d, os, pVals, rn, t0, Y)
 ```
 
 # Visualizing Results
 ```{r Setup Visualization}
-namesList <- names(LIHCRes)
-LIHCRes <- as.data.frame(LIHCRes)
+namesList <- names(tcgaData$Results)
+LIHCRes <- as.data.frame(tcgaData$Results)
 
 colnames(LIHCRes) <- namesList
 
@@ -429,6 +424,10 @@ ftable(as.data.frame(LIHCResDE))
 ```{r}
 corSpear <- cor(LIHCRes, method = "spearman", use  = "pairwise.complete.obs")
 xtable::xtable(as.matrix(corSpear)) ##return latex table
+```
+```{r}
+mds <- MASS::isoMDS(1- corSpear +0.0001)
+plot(mds$points, col = namesList)
 ```
 
 
