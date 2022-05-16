@@ -10,67 +10,72 @@ set.seed(123)
 library(dplyr)
 library(MASS)
 library(ggplot2)
-sapply(list.files("../R/"), function(f) source(paste0("../R/", f)))
+sapply(list.files("../functions/"), function(f) source(paste0("../functions/", f)))
 
-data.dir <- "../data/"
-tcga_data <- readRDS(paste0(data.dir, "TCGA-LIHC_processed.RDs"))
-LIHC_res <- readRDS(paste0(data.dir, "TCGA-LIHC_results.RDs"))
-names_list <- names(LIHC_res)
-LIHC_res <- as.data.frame(LIHC_res)
-colnames(LIHC_res) <- names_list
+dataDir <- "../data/"
+tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
+
+tcgaDataCleaned <-tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
+tcgaDataCleaned$counts <- tcgaData$counts[,!tcgaData$patientMaskDelete]
+tcgaDataCleaned$group  <- tcgaData$group[!tcgaData$patientMaskDelete]
+
+
+namesList <- names(tcgaData$Results)
+LIHCRes <- as.data.frame(tcgaData$Results)
+colnames(LIHCRes) <- namesList
 
 ### Compute Rejected Genes and print number of Rejections for all Methods
-LIHC_res_DE <- LIHC_res <= 0.01
-colSums(LIHC_res_DE, na.rm = T)
+LIHCResDE <- LIHCRes <= 0.01
+colSums(LIHCResDE, na.rm = T)
 
-rownames(tcga_data$counts) <- 1:nrow(tcga_data$counts)
+rownames(tcgaDataCleaned$counts) <- 1:nrow(tcgaDataCleaned$counts)
 ```
 
 
 # Load 
 ```{r}
-DE <- LIHC_res <= 0.01
-NDE <- LIHC_res > 0.1
+DE <- LIHCRes <= 0.01
+NDE <- LIHCRes > 0.1
 
 DE <- rowSums(DE, na.rm = T) >= 7
 NDE <- rowSums(NDE, na.rm = T) >= 5
 
-DE_size <- 500
+DESize <- 200
 
 #get random genes 
-DE  <- sample(which(DE), DE_size)
-NDE <- sample(which(NDE), DE_size*5)
+DE  <- sample(which(DE), DESize)
+NDE <- sample(which(NDE), DESize*6)
 
-X_DE  <- tcga_data$counts[DE,]
-X_NDE <- tcga_data$counts[NDE,]
+XDE  <- tcgaDataCleaned$counts[DE,]
+XNDE <- tcgaDataCleaned$counts[NDE,]
 
-X_all <- rbind(X_DE, X_NDE)
-rownames(X_all) <- 1:nrow(X_all)
+XAll <- rbind(XDE, XNDE)
+rownames(XAll) <- 1:nrow(XAll)
 
-Y_all <- tcga_data$group == "Primary solid Tumor"
+YAll <- tcgaDataCleaned$group == "Primary solid Tumor"
 
 #compute norm factors for permutations
-d_all <- edgeR::DGEList(counts = X_all, group = Y_all)
-d_all <- edgeR::calcNormFactors(d_all)
-d_all <- edgeR::estimateDisp(d_all)
+dAll <- edgeR::DGEList(counts = XAll, group = YAll)
+dAll <- edgeR::calcNormFactors(dAll)
+dAll <- edgeR::estimateDisp(dAll)
 
 #rm(tcga_data, LIHC_res, LIHC_res_DE, LIHC_res_NDE)
 
-c_all <- abs(cor(t(edgeR::cpm(d_all))))
-diag(c_all) <- 0
-c_max <- apply(c_all, 2, max)
+cAll <- abs(cor(t(edgeR::cpm(dAll))))
+diag(cAll) <- 0
+cMax <- apply(cAll, 2, max)
 
-plot_data <- data.frame(mu = rowMeans(d_all$counts * d_all$samples$norm.factors),
-                        phi = d_all$tagwise.dispersion,
-                        corr_max = c_max,
-                        de_mask = 1:nrow(d_all) <= DE_size)
+plotData <- data.frame(mu = rowMeans(dAll$counts * dAll$samples$norm.factors),
+                        phi = dAll$tagwise.dispersion,
+                        corrMax = cMax,
+                        deMask = 1:nrow(dAll) <= DESize)
 
-rm(c_max, c_all)
+rm(cMax, cAll)
 
-n_repl <- 200
-ResFileName <- paste0(data.dir, "LIHCPermutationResults.Rds")
+nRepl <- 100
+ResFileName <- paste0(dataDir, "LIHCPermutationResults.Rds")
 
-n_list <- list("10" = 10,  "40" = 40)
+nList <- list("10" = 10,  "40" = 40)
 rerun <- T
 
 
@@ -80,45 +85,40 @@ if (file.exists(ResFileName)){
   PermResults <- list()
 }
 
-PermResults$plot_data$Unfiltered = plot_data
+PermResults$plotData$Unfiltered = plotData
 saveRDS(PermResults, file = ResFileName)
 ```
 
 
 ```{r Running Simulation w/o Filtering}
-
 t0 <- Sys.time()    
-
 suppressMessages(suppressWarnings(
   ### For Each Sample Size n:
-  PermResults$GeneData$Unfiltered <- lapply(n_list, function(n){
+  PermResults$geneData$Unfiltered <- lapply(nList, function(n){
   print(n)
   c <- 0
-  t_n <- Sys.time()
+  tN <- Sys.time()
   ### Inner Loop: Replicate n_repl times
-  replicate(n_repl,{
-    cat("\r",
-        "Progress: ", round(c/n_repl,3),  
-        "Time Remaining: ", 
-        round(difftime(Sys.time(), t_n, units = "mins")/(c/n_repl)*(1- c/n_repl), 2), " min    ")
+  replicate(nRepl,{
+    PrintProgress(c, nRepl, tN)
     c <<- c + 1
-    XY_data <- GetXYperm(n, X_DE = X_DE, X_NDE = X_NDE, Y_all, DE_size,
-                         d_all$samples$norm.factors)
+    XYData <- GetXYperm(n, XDE = XDE, XNDE = XNDE, YAll, DESize,
+                         dAll$samples$norm.factors)
     res <- list()
-    res$EdgerEt  <- EdgeRPipeline(XY_data$X, XY_data$Y, test = "exact",
+    res$EdgerEt  <- EdgeRPipeline(XYData$X, XYData$Y, test = "exact",
                                   filtering = F)$p.value
-    res$EdgerQl  <- EdgeRPipeline(XY_data$X, XY_data$Y, test = "ql",
+    res$EdgerQl  <- EdgeRPipeline(XYData$X, XYData$Y, test = "ql",
                                      filtering = F)$p.value
-    res$DESeq2   <- DESeq2Pipeline(XY_data$X, XY_data$Y)$p.value
-    res$Limma    <- LimmaPipeline(XY_data$X, XY_data$Y, filtering = F)$p.value
-    res$MW       <- WilcoxPipeline(XY_data$X, XY_data$Y)$p.value
-    res$DP <- DirectPermutationsPipeline(XY_data$X, XY_data$Y, n_flips = 2000)$p.value
-    res$FsP.B     = FlipScoresPipeline(XY_data$X, XY_data$Y, "poisson",
-                                       score_type = "basic", n_flips = 400)$p.value
-    res$FsP.E = FlipScoresPipeline(XY_data$X, XY_data$Y, "poisson",
-                                   score_type = "effective", n_flips = 400)$p.value
-    res$FsP.S  = FlipScoresPipeline(XY_data$X, XY_data$Y, "poisson",
-                                    score_type = "standardized", n_flips = 400)$p.value
+    res$DESeq2   <- DESeq2Pipeline(XYData$X, XYData$Y)$p.value
+    res$Limma    <- LimmaPipeline(XYData$X, XYData$Y, filtering = F)$p.value
+    res$MWU       <- MWUPipeline(XYData$X, XYData$Y)$p.value
+    res$DP <- DirectPermutationsPipeline(XYData$X, XYData$Y, nFlips = 400)$p.value
+    res$FsP.B     = FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
+                                       scoreType = "basic", nFlips = 200)$p.value
+    res$FsP.E = FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
+                                   scoreType = "effective", nFlips = 200)$p.value
+    res$FsP.S  = FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
+                                    scoreType = "standardized", nFlips = 200)$p.value
     return(res)
     })
   })
@@ -128,55 +128,50 @@ print(Sys.time() - t0)
 ```
 
 
-
-
-
-
-
 # Load 
 ```{r}
-DE <- LIHC_res <= 0.01
-NDE <- LIHC_res > 0.05
+DE <- LIHCRes <= 0.01
+NDE <- LIHCRes > 0.1
 
-DE <- rowSums(DE, na.rm = T) >= 6
-NDE <- rowSums(NDE, na.rm = T) >= 4
+DE <- rowSums(DE, na.rm = T) >= 7
+NDE <- rowSums(NDE, na.rm = T) >= 5
 
-DE_size <- 200
+DESize <- 400
 
 #get random genes 
-DE  <- sample(which(DE), DE_size)
-NDE <- sample(which(NDE), DE_size*5)
+DE  <- sample(which(DE), DESize)
+NDE <- sample(which(NDE), DESize*6)
 
-X_DE  <- tcga_data$counts[DE,]
-X_NDE <- tcga_data$counts[NDE,]
+XDE  <- tcgaDataCleaned$counts[DE,]
+XNDE <- tcgaDataCleaned$counts[NDE,]
 
-X_all <- rbind(X_DE, X_NDE)
-rownames(X_all) <- 1:nrow(X_all)
+XAll <- rbind(XDE, XNDE)
+rownames(XAll) <- 1:nrow(XAll)
 
-Y_all <- tcga_data$group == "Primary solid Tumor"
+YAll <- tcgaDataCleaned$group == "Primary solid Tumor"
 
 #compute norm factors for permutations
-d_all <- edgeR::DGEList(counts = X_all, group = Y_all)
-d_all <- edgeR::calcNormFactors(d_all)
-d_all <- edgeR::estimateDisp(d_all)
+dAll <- edgeR::DGEList(counts = XAll, group = YAll)
+dAll <- edgeR::calcNormFactors(dAll)
+dAll <- edgeR::estimateDisp(dAll)
 
 #rm(tcga_data, LIHC_res, LIHC_res_DE, LIHC_res_NDE)
 
-c_all <- abs(cor(t(edgeR::cpm(d_all))))
-diag(c_all) <- 0
-c_max <- apply(c_all, 2, max)
+cAll <- abs(cor(t(edgeR::cpm(dAll))))
+diag(cAll) <- 0
+cMax <- apply(cAll, 2, max)
 
-plot_data <- data.frame(mu = rowMeans(d_all$counts * d_all$samples$norm.factors),
-                        phi = d_all$tagwise.dispersion,
-                        corr_max = c_max,
-                        de_mask = 1:nrow(d_all) <= DE_size)
+plotData <- data.frame(mu = rowMeans(dAll$counts * dAll$samples$norm.factors),
+                        phi = dAll$tagwise.dispersion,
+                        corrMax = cMax,
+                        deMask = 1:nrow(dAll) <= DESize)
 
-rm(c_max, c_all)
+rm(cMax, cAll)
 
-n_repl <- 100
-ResFileName <- paste0(data.dir, "LIHCPermutationResults.Rds")
+nRepl <- 200
+ResFileName <- paste0(dataDir, "LIHCPermutationResults.Rds")
 
-n_list <- list("10" = 10,  "40" = 40)
+nList <- list("10" = 10,  "40" = 40)
 rerun <- T
 
 
@@ -186,7 +181,7 @@ if (file.exists(ResFileName)){
   PermResults <- list()
 }
 
-PermResults$plot_data_Filtered <- plot_data
+PermResults$plotData$Filtered <- plotData
 saveRDS(PermResults, file = ResFileName)
 ```
 
@@ -224,14 +219,14 @@ suppressMessages(suppressWarnings(
                                      filtering = F)$p.value
     res$DESeq2   <- DESeq2Pipeline(XY_data$X, XY_data$Y)$p.value
     res$Limma    <- LimmaPipeline(XY_data$X, XY_data$Y, filtering = F)$p.value
-    res$MW       <- WilcoxPipeline(XY_data$X, XY_data$Y)$p.value
-    res$DP <- DirectPermutationsPipeline(XY_data$X, XY_data$Y, n_flips = 200)$p.value
-    res$FsP.B     = FlipScoresPipeline(XY_data$X, XY_data$Y, "poisson",
+    res$MW       <- MWUPipeline(XY_data$X, XY_data$Y)$p.value
+    res$DP       <- DPPipeline(XY_data$X, XY_data$Y, n_flips = 200)$p.value
+    res$FsPoisB  <- FlipScoresPipeline(XY_data$X, XY_data$Y, "poisson",
                                        score_type = "basic", n_flips = 40)$p.value
-    res$FsP.E = FlipScoresPipeline(XY_data$X, XY_data$Y, "poisson",
+    res$FsPoisE  <- FlipScoresPipeline(XY_data$X, XY_data$Y, "poisson",
                                    score_type = "effective", n_flips = 40)$p.value
-    res$FsP.S  = FlipScoresPipeline(XY_data$X, XY_data$Y, "poisson",
-                                    score_type = "standardized", n_flips = 40)$p.value
+    res$FsPoisS  <- FlipScoresPipeline(XY_data$X, XY_data$Y, "poisson",
+                                       score_type = "standardized", n_flips = 40)$p.value
     
     
     df <- data.frame(row.names = rn, matrix(nrow = length(rn), ncol = 9))
@@ -243,9 +238,6 @@ suppressMessages(suppressWarnings(
 ))
 saveRDS(PermResults, file = ResFileName)
 print(Sys.time() - t0)
-```
-```{r}
-PermResults$GeneData$filtered$"10"[1,]
 ```
 
 
