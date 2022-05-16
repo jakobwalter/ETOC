@@ -45,7 +45,7 @@ rm(reproAll)
 ### If we do not want to reproduce the download step,  load it from there
 if (file.exists(paste0(dataDir, "TCGALIHC.Rds")) | reproList$downloadingRawData){
   message("Load Saved Data")
-  TCGADataRaw <- readRDS(file = paste0(dataDir, "TCGALIHC.RDS"))
+  TCGAData <- readRDS(file = paste0(dataDir, "TCGALIHC.RDS"))
   
 
 } else {
@@ -315,7 +315,7 @@ topGenes <- as.data.frame(DESeq2::results(dds, alpha = 1-1e-15,
                                           independentFiltering=FALSE)
                           )
 
-tcgaData$Results$DESeq2 <- qlf$table$PValue
+tcgaData$Results$DESeq2 <- topGenes$pvalue
 saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 ```
 
@@ -330,8 +330,8 @@ dge <- edgeR::calcNormFactors(dge, method="TMM")
 ### compute normalized CPM, rounded to account for noise in ties
 dgeCpm <- round(edgeR::cpm(dge), 1)
 
-### Apply Wilcoxon Test to All Genes using the created mask and Save Data
-tcgaData$Results$MW <- sapply(1:nrow(dgeCpm), function(i) {
+### Apply MWU Test to All Genes using the created mask and Save Data
+tcgaData$Results$MWU <- sapply(1:nrow(dgeCpm), function(i) {
     wilcox.test(dgeCpm[i, groupMask], dgeCpm[i, !groupMask])$p.value
 })
 saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
@@ -339,7 +339,7 @@ saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 
 
 ```{r Direct Permutation Test}
-nFlips <- 1000
+nFlips <- 2000
 rn <- row.names(tcgaDataCleaned$counts)
 
 ### Normalize Data
@@ -367,8 +367,9 @@ pVals <- sapply(1:nrow(tcgaDataCleaned$counts), function(i){
 tcgaData$Results$DP <- pVals
 saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 
-rm(d, dds, dge, dgeCPM, dgeDefault, X, pVals)
+rm(d, dds, dge, dgeDefault, X, pVals)
 ```
+
 
 ```{r Flipscores}
 ### Compute Offsets using EdgeR
@@ -392,7 +393,7 @@ pVals <- sapply(1:nrow(tcgaDataCleaned$counts),
                    mod0 <- flipscores::flipscores(X_i ~ Y + offset(os),
                                                   family = poisson,
                                                   score_type = "standardized",
-                                                  n_flips = 200,                #ca. 6h
+                                                  n_flips = 400,                #ca. 6h
                                                   to_be_tested = 2)
                    })
                    coef(summary(mod0))[2, 5] #  extract p-value from summary
@@ -426,8 +427,14 @@ corSpear <- cor(LIHCRes, method = "spearman", use  = "pairwise.complete.obs")
 xtable::xtable(as.matrix(corSpear)) ##return latex table
 ```
 ```{r}
+as.matrix(corSpear)
+```
+
+
+```{r}
 mds <- MASS::isoMDS(1- corSpear +0.0001)
-plot(mds$points, col = namesList)
+ggplot(mapping = aes(x = mds$points[,1], y = mds$points[,2], col = row.names(mds$points))) +
+  geom_point()
 ```
 
 
