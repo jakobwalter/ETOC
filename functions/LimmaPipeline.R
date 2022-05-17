@@ -1,8 +1,9 @@
-LimmaPipeline = function(X, Y, filtering = F, ...){
+LimmaPipeline = function(Y, X, filtering = F, ...){
 
-  design = model.matrix(~ Y)
+  design = model.matrix(~ X)
 
-  dge = edgeR::DGEList(counts=X)
+  dge = edgeR::DGEList(counts=Y)
+  rn <- row.names(Y)
 
   dge = edgeR::calcNormFactors(dge)
 
@@ -23,10 +24,13 @@ LimmaPipeline = function(X, Y, filtering = F, ...){
   #extract p-values from moderated t-statistic
   fit = limma::eBayes(fit)
 
-  pVals <- pVals <- data.frame("pValue" = fit$p.value[,2])
-
-  df <- data.frame(row.names = rownames(X), pValue = rep(NA, nrow(X)))
-
-  df[rownames(df) %in% rownames(pVals), 1] <- pVals$pValue
-  return(df)
+  ### If we only computed p-values for the not-filtered genes, pad the rest w. NAs
+  if (filtering){
+    df <- data.frame(row.names = rn, pValue = rep(NA, length(rn)))
+    df[keep, 1] <- fit$p.value[,2]
+    
+  } else {
+    df <- data.frame(row.names = rn, pValue = fit$p.value[,2])
+  }
+  return(df$pValue)
 }

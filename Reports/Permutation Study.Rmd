@@ -5,21 +5,25 @@ output: html_notebook
 
 # Permutation Study Unfiltered
 
-```{r Setup Visualization}
+```{r Setup}
 set.seed(123)
 library(dplyr)
 library(MASS)
 library(ggplot2)
+
+### Load Helper Functions
 sapply(list.files("../functions/"), function(f) source(paste0("../functions/", f)))
 
+### Load Data
 dataDir <- "../data/"
 tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
 
-tcgaDataCleaned <-tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
+### Subset Data for two-group Comparison
+tcgaDataCleaned <- tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
 tcgaDataCleaned$counts <- tcgaData$counts[,!tcgaData$patientMaskDelete]
 tcgaDataCleaned$group  <- tcgaData$group[!tcgaData$patientMaskDelete]
 
-
+### Load p-values of all methods and convert to data frame
 namesList <- names(tcgaData$Results)
 LIHCRes <- as.data.frame(tcgaData$Results)
 colnames(LIHCRes) <- namesList
@@ -28,177 +32,170 @@ colnames(LIHCRes) <- namesList
 LIHCResDE <- LIHCRes <= 0.01
 colSums(LIHCResDE, na.rm = T)
 
+### Rename Genes to Integers
 rownames(tcgaDataCleaned$counts) <- 1:nrow(tcgaDataCleaned$counts)
 ```
 
 
 # Load 
 ```{r}
-DE <- LIHCRes <= 0.01
-NDE <- LIHCRes > 0.1
+### Create Masks for Genes that are Differentially Expressed (De)  and
+### Not Differentially Expressed (NDe)
+De  <- LIHCRes <= 0.01
+NDe <- LIHCRes > 0.1
+De <- rowSums(De, na.rm = T) >= 7
+NDe <- rowSums(NDe, na.rm = T) >= 5
 
-DE <- rowSums(DE, na.rm = T) >= 7
-NDE <- rowSums(NDE, na.rm = T) >= 5
+### Get Random Selection of genes of a given size for a given ratio
+DeSize <- 50
+De  <- sample(which(De), DeSize)
+NDe <- sample(which(NDe), DeSize*5)
+YDe  <- tcgaDataCleaned$counts[De,]
+YNDe <- tcgaDataCleaned$counts[NDe,]
+YAll <- rbind(YDe, YNDe)
+rownames(YAll) <- 1:nrow(YAll)
+XAll <- tcgaDataCleaned$group == "Primary solid Tumor"   
 
-DESize <- 1000
-
-#get random genes 
-DE  <- sample(which(DE), DESize)
-NDE <- sample(which(NDE), DESize*6)
-
-XDE  <- tcgaDataCleaned$counts[DE,]
-XNDE <- tcgaDataCleaned$counts[NDE,]
-
-XAll <- rbind(XDE, XNDE)
-rownames(XAll) <- 1:nrow(XAll)
-
-YAll <- tcgaDataCleaned$group == "Primary solid Tumor"
-
-#compute norm factors for permutations
-dAll <- edgeR::DGEList(counts = XAll, group = YAll)
+### Compute norm factors and Dispersion on full dataset for later analyses
+dAll <- edgeR::DGEList(counts = YAll, group = XAll)
 dAll <- edgeR::calcNormFactors(dAll)
 dAll <- edgeR::estimateDisp(dAll)
 
-#rm(tcga_data, LIHC_res, LIHC_res_DE, LIHC_res_NDE)
-
+### Maximum Absolute Correlation for each gene
 cAll <- abs(cor(t(edgeR::cpm(dAll))))
 diag(cAll) <- 0
-cMax <- apply(cAll, 2, max)
+cMax <- apply(cAll, 2, max) 
 
+### save plotting data
 plotData <- data.frame(mu = rowMeans(dAll$counts * dAll$samples$norm.factors),
                         phi = dAll$tagwise.dispersion,
                         corrMax = cMax,
-                        deMask = 1:nrow(dAll) <= DESize)
+                        deMask = 1:nrow(dAll) <= DeSize)
 
 rm(cMax, cAll)
 
+### Set Simulation Parameters
 nRepl <- 100
-ResFileName <- paste0(dataDir, "LIHCPermutationResults.Rds")
-
 nList <- list("10" = 10,  "40" = 40)
-rerun <- T
 
-
-if (file.exists(ResFileName)){
-  PermResults <- readRDS(ResFileName)
+### Load previous simulation results or create new list
+resFileName <- paste0(dataDir, "LIHCPermutationResults.Rds")
+if (file.exists(resFileName)){
+  permResults <- readRDS(resFileName)
 } else{
-  PermResults <- list()
+  permResults <- list()
 }
 
-PermResults$plotData$Unfiltered = plotData
-saveRDS(PermResults, file = ResFileName)
+permResults$plotData$unfiltered <- plotData
+saveRDS(permResults, file = resFileName)
+
+rm(plotData, tcgaData)
 ```
+
+
+
 ```{r}
-RunAllMethods <- function(X, Y){
+### Helper Function to run all Methods
+RunAllMethods <- function(Y, X){
+  suppressMessages(suppressWarnings({
   res <- list()
-  res$EdgerEt  <- EdgeRPipeline(XYData$X, XYData$Y, test = "exact",
-                                  filtering = F)$p.value
-  res$EdgerQl  <- EdgeRPipeline(XYData$X, XYData$Y, test = "ql",
-                                     filtering = F)$p.value
-  res$DESeq2   <- DESeq2Pipeline(XYData$X, XYData$Y)$p.value
-  res$Limma    <- LimmaPipeline(XYData$X, XYData$Y, filtering = F)$p.value
-  res$MWU      <- MWUPipeline(XYData$X, XYData$Y)$p.value
-  res$DP       <- DirectPermutationsPipeline(XYData$X, XYData$Y, nFlips = 1000)$p.value
-  res$FsPB     <- FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
-                                       scoreType = "basic", nFlips = 200)$p.value
-  res$FsPE     <- FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
-                                scoreType = "effective", nFlips = 200)$p.value
-  res$FsPS     <- FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
-                                 scoreType = "standardized", nFlips = 200)$p.value
+  res$Limma    <- LimmaPipeline(Y, X)
+  res$EdgeREt  <- EdgeRPipeline(Y, X, test = "exact")
+  res$EdgeRQl  <- EdgeRPipeline(Y, X, test = "ql")
+  res$DESeq2   <- DESeq2Pipeline(Y, X)
+  res$MWU      <- MWUPipeline(Y, X)
+  res$DP       <- DirectPermutationsPipeline(X, Y, nFlips = 100)
+  res$FsPB     <- FlipScoresPipeline(Y, X, "poisson", scoreType = "basic", nFlips = 20)
+  res$FsPE     <- FlipScoresPipeline(Y, X, "poisson", scoreType = "effective", nFlips = 20)
+  res$FsPS     <- FlipScoresPipeline(Y, X, "poisson", scoreType = "standardized", nFlips = 20)
+  }))
   return(res)
   
 }
 ```
 
 
+
 ```{r Running Simulation w/o Filtering}
 t0 <- Sys.time()    
-suppressMessages(suppressWarnings(
-  ### For Each Sample Size n:
-  PermResults$geneData$Unfiltered <- lapply(nList, function(n){
+### For Each Sample Size n:
+permResults$geneData$unfiltered <- lapply(nList, function(n){
   print(n)
   c <- 0
   tN <- Sys.time()
   ### Inner Loop: Replicate n_repl times
   replicate(nRepl,{
+    ### Print Progress and Increase Counter
     PrintProgress(c, nRepl, tN)
     c <<- c + 1
-    XYData <- GetXYperm(n, XDE = XDE, XNDE = XNDE, YAll, DESize,
-                         dAll$samples$norm.factors)
-    
-    res <- RunAllMethods(XYData$X, XYData$Y)
-    return(res)
-    })
+    XYData <- GetXYperm(n, YDe, YNDe, XAll, DESize, dAll$samples$norm.factors)
+    res    <- RunAllMethods(XYData$Y, XYData$X)
+  return(res)
   })
-))
-saveRDS(PermResults, file = ResFileName)
+})
+
+saveRDS(permResults, file = resFileName)
 print(Sys.time() - t0)
 ```
 
 
+```{r Prepare Data w. Filtering}
+### Create Masks for Genes that are Differentially Expressed (De)  and
+### Not Differentially Expressed (NDe)
+De  <- LIHCRes <= 0.01
+NDe <- LIHCRes > 0.1
+De <- rowSums(De, na.rm = T) >= 7
+NDe <- rowSums(NDe, na.rm = T) >= 5
+### Get Random Selection of genes of a given size for a given ratio
+DeSize <- 100
+De  <- sample(which(De), DeSize)
+NDe <- sample(which(NDe), DeSize*5)
+YDe  <- tcgaDataCleaned$counts[De,]
+YNDe <- tcgaDataCleaned$counts[NDe,]
+YAll <- rbind(YDe, YNDe)
+rownames(YAll) <- 1:nrow(YAll)
+XAll <- tcgaDataCleaned$group == "Primary solid Tumor"   
 
-```{r w Filtering}
-DE <- LIHCRes <= 0.01
-NDE <- LIHCRes > 0.1
-
-DE <- rowSums(DE, na.rm = T) >= 7
-NDE <- rowSums(NDE, na.rm = T) >= 5
-
-DESize <- 500
-
-#get random genes 
-DE  <- sample(which(DE), DESize)
-NDE <- sample(which(NDE), DESize*6)
-
-XDE  <- tcgaDataCleaned$counts[DE,]
-XNDE <- tcgaDataCleaned$counts[NDE,]
-
-XAll <- rbind(XDE, XNDE)
-rownames(XAll) <- 1:nrow(XAll)
-
-YAll <- tcgaDataCleaned$group == "Primary solid Tumor"
-
-#compute norm factors for permutations
-dAll <- edgeR::DGEList(counts = XAll, group = YAll)
+### Compute norm factors and Dispersion on full dataset for later analyses
+dAll <- edgeR::DGEList(counts = YAll, group = XAll)
 dAll <- edgeR::calcNormFactors(dAll)
 dAll <- edgeR::estimateDisp(dAll)
 
-#rm(tcga_data, LIHC_res, LIHC_res_DE, LIHC_res_NDE)
-
+### Maximum Absolute Correlation for each gene
 cAll <- abs(cor(t(edgeR::cpm(dAll))))
 diag(cAll) <- 0
-cMax <- apply(cAll, 2, max)
+cMax <- apply(cAll, 2, max) 
 
+### save plotting data
 plotData <- data.frame(mu = rowMeans(dAll$counts * dAll$samples$norm.factors),
                         phi = dAll$tagwise.dispersion,
                         corrMax = cMax,
-                        deMask = 1:nrow(dAll) <= DESize)
+                        deMask = 1:nrow(dAll) <= DeSize)
 
 rm(cMax, cAll)
 
+### Set Simulation Parameters
 nRepl <- 100
-ResFileName <- paste0(dataDir, "LIHCPermutationResults.Rds")
-
 nList <- list("10" = 10,  "40" = 40)
-rerun <- T
 
-
-if (file.exists(ResFileName)){
-  PermResults <- readRDS(ResFileName)
+### Load previous simulation results or create new list
+resFileName <- paste0(dataDir, "LIHCPermutationResults.Rds")
+if (file.exists(resFileName)){
+  permResults <- readRDS(resFileName)
 } else{
-  PermResults <- list()
+  permResults <- list()
 }
 
-PermResults$plotData$Filtered <- plotData
-saveRDS(PermResults, file = ResFileName)
+permResults$plotData$filtered <- plotData
+saveRDS(permResults, file = resFileName)
+rm(plotData)
 ```
 
 
 ```{r Running Simulation w Filtering}
-t0 <- Sys.time()    
-suppressMessages(suppressWarnings(
-  ### For Each Sample Size n:
-  PermResults$geneData$Filtered <- lapply(nList, function(n){
+t0 <- Sys.time()   
+### For Each Sample Size n:
+permResults$geneData$filtered <- lapply(nList, function(n){
   print(n)
   c <- 0
   tN <- Sys.time()
@@ -206,54 +203,58 @@ suppressMessages(suppressWarnings(
   replicate(nRepl,{
     PrintProgress(c, nRepl, tN)
     c <<- c + 1
-    XYData <- GetXYperm(n, XDE = XDE, XNDE = XNDE, YAll, DESize,
-                         dAll$samples$norm.factors)
-    rn <- rownames(XYData$X)
+    XYData <- GetXYperm(n, YDe, YNDe, XAll, DESize, dAll$samples$norm.factors)
+    rn <- rownames(XYData$Y)
+    
     ### Filtering
-    d <- edgeR::DGEList(counts = XYData$X)
+    d <- edgeR::DGEList(counts = XYData$Y)
     d <- edgeR::calcNormFactors(d)
     keep = edgeR::filterByExpr(d)
     d <- d[keep,]
-    XYData$X <- d$counts
+    XYData$Y <- d$counts
     
-    res <- RunAllMethods(XYData$X, XYData$Y)
+    res <- RunAllMethods(XYData$Y, XYData$X)
     
     df <- data.frame(row.names = rn, matrix(nrow = length(rn), ncol = 9))
     df[keep, ] <- as.data.frame(res)
     
+    colnames(df) <- names(res)
     return(df)
     })
-  })
-))
-saveRDS(PermResults, file = ResFileName)
+})
+
+saveRDS(permResults, file = resFileName)
 print(Sys.time() - t0)
 
-rm(tcgaDataCleaned, dALL, LIHCResDE, nList, XAll, XDE, XNDE, DE, NDE)
+
+
 ```
+
 
 
 
 ## Create Plots
 
 ```{r}
-tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
-ResFileName <- paste0(dataDir, "LIHCPermutationResults.Rds")
-PermResults <- readRDS(ResFileName)
+dataDir <- "../data/"
+tcgaData    <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
+resFileName <- paste0(dataDir, "LIHCPermutationResults.Rds")
+permResults <- readRDS(resFileName)
 ```
 
 ```{r}
-GetModels <- function(t1_data, formula, sp = c(0.25, 0.25, 0.25)){
-  param.grid <- expand.grid(Model = unique(t1_data$name),
+GetModels <- function(t1Data, formula, sp = c(0.25, 0.25, 0.25)){
+  paramGrid <- expand.grid(Model = unique(t1_data$name),
                             n =  as.character(unique(t1_data$n)),
                             DE = c(T,F))
-  fitted_models <- apply(param.grid, 1, function(p){
-    mask <- t1_data$n == p["n"] & t1_data$de_mask == p["DE"] & t1_data$name == p["Model"]
-    b1 <- mgcv::gam(formula, data = t1_data[mask,],
+  fittedModels <- apply(paramGrid, 1, function(p){
+    mask <- t1Data$n == p["n"] & t1Data$de_mask == p["DE"] & t1Data$name == p["Model"]
+    b1 <- mgcv::gam(formula, data = t1Data[mask,],
                     family = mgcv::betar(eps = 0.0001), sp = sp)
     
   })
-  names(fitted_models) <- paste(param.grid$Model, param.grid$n, ifelse(param.grid$DE, "DE", "NDE"), sep = "_")
-  return(fitted_models)
+  names(fittedModels) <- paste(paramGrid$Model, paramGrid$n, ifelse(paramGrid$DE, "DE", "NDE"), sep = "_")
+  return(fittedModels)
 }
 ```
 
@@ -272,7 +273,6 @@ GetPreds <- function(models, cutoffs){
   
   model.terms <- c("s(log(mu))", "s(phi)", "s(corr_max)")
   
-  #print(model.terms)
   
   preds <- lapply(1:length(model.terms), function(i){
     pred <- lapply(models, function(m){
@@ -292,23 +292,24 @@ GetPreds <- function(models, cutoffs){
 ```
 
 
+
 ## Plots
 
 ```{r  qq plot unfiltered}
-p_seq <- seq(0, 0.1, by = 0.01)
-df <- lapply(PermResults$geneData$Unfiltered, function(i){
+pSeq <- seq(0, 0.1, by = 0.01)
+df <- lapply(permResults$geneData$unfiltered, function(i){
   apply(i, 1, function(j){
-    df <- as.data.frame(j)[!PermResults$plot_data$de_mask,]
+    df <- as.data.frame(j)[!permResults$plotData$unfiltered$deMask,]
     df <- tidyr::replace_na(df, list(rep(1, 120)))
     df <- apply(df, 1, function(k){#
-      sapply(p_seq, function(p) mean(k < p, na.rm = T))
+      sapply(pSeq, function(p) mean(k < p, na.rm = T))
     })
     rowMeans(df, na.rm = T)
   })
 })
 df <- as.data.frame(rbind(df[[1]], df[[2]]))
 df$n <- rep(c(10,40), each = nrow(df)/2)
-df$p <- p_seq
+df$p <- pSeq
 p1 <- tidyr::pivot_longer(df, 1:9) %>%
   ggplot(mapping = aes(x = p, y = value, col = name, linetype = name)) +
   geom_line() +
@@ -323,39 +324,28 @@ p2 <- tidyr::pivot_longer(df, 1:9) %>%
   scale_y_log10()
 p_all <- cowplot::plot_grid(p1, p2, nrow = 2)
 
-file_name <- paste("../plots/PermUF", 
-                   "qq_plot_unfiltered", ".png", 
+file_name <- paste("../plots/", 
+                   "qqPlotUnfiltered", ".png", 
                    sep = "")
-
 
 cowplot::save_plot(p_all, filename = file_name, nrow =2)      
 ```
 
-```{r}
-rownames(PermResults$GeneData$Unfiltered$"10")
-```
-
-```{r}
-row.names(PermResults$GeneData$filtered$"10") <- rownames(PermResults$GeneData$Unfiltered$"10")
-row.names(PermResults$GeneData$filtered$"40") <- rownames(PermResults$GeneData$Unfiltered$"40")
-```
-
-```{r}
-p_seq <- seq(0, 0.1, by = 0.005)
-df <- lapply(PermResults$GeneData$filtered, function(i){
+```{r  qq plot filtered}
+pSeq <- seq(0, 0.1, by = 0.01)
+df <- lapply(permResults$geneData$filtered, function(i){
   apply(i, 1, function(j){
-    df <- as.data.frame(j)[!PermResults$plot_data_Filtered$de_mask,]
-    #df <- tidyr::replace_na(df, list(rep(1, 120)))
-    df <- apply(df, 1, function(k){#
-      sapply(p_seq, function(p) mean(k < p, na.rm = T))
+    df <- as.data.frame(j)[!permResults$plotData$filtered$deMask,]
+    df <- apply(df, 1, function(k){
+      sapply(pSeq, function(p) mean(k < p, na.rm = T))
     })
     rowMeans(df, na.rm = T)
   })
 })
 df <- as.data.frame(rbind(df[[1]], df[[2]]))
 df$n <- rep(c(10,40), each = nrow(df)/2)
-df$p <- p_seq
-p1 <- tidyr::pivot_longer(df, 1:7) %>%
+df$p <- pSeq
+p1 <- tidyr::pivot_longer(df, 1:9) %>%
   ggplot(mapping = aes(x = p, y = value, col = name, linetype = name)) +
   geom_line() +
   geom_abline(intercept = 0, slope = 1) +
@@ -369,49 +359,63 @@ p2 <- tidyr::pivot_longer(df, 1:9) %>%
   scale_y_log10()
 p_all <- cowplot::plot_grid(p1, p2, nrow = 2)
 
-file_name <- paste("../plots/PermUF", 
-                   "qq_plot_filtered", ".png", 
+file_name <- paste("../plots/", 
+                   "qqPlotFiltered", ".png", 
                    sep = "")
 
-
-cowplot::save_plot(p_all, filename = file_name, nrow =2)  
+cowplot::save_plot(p_all, filename = file_name, nrow =2)      
 ```
 
-```{r Get Nominal alphas}
-GetNomAlpha_10 <- function(a, i, alpha = 0.05){
-  df <- as.data.frame(PermResults$GeneData$Unfiltered$"10"[i,])[651:1950,] <= a
-  #df[is.na(df)] <- F
-  obj <- (mean(df, na.rm = T) - alpha)^2
-  return(obj)
-}
 
-GetNomAlpha_40 <- function(a, i, alpha = 0.05){
-  df <- as.data.frame(PermResults$GeneData$Unfiltered$"40"[i,])[651:1950,] <= a
-  #df[is.na(df)] <- F
-  obj <- (mean(df, na.rm = T) - alpha)^2
-  return(obj)
-}
-
-
-NomAlphas_10 <- sapply(1:9, function(i) optimize(GetNomAlpha_10, interval = c(0, 1), i = i)[[1]])
-
-NomAlphas_40 <- sapply(1:9, function(i) optimize(GetNomAlpha_40, interval = c(0, 1), i = i)[[1]])
-
-```
 
 
 ```{r}
-row.names(PermResults$GeneData$Unfiltered$"10")
-round(NomAlphas_10,4)
-round(NomAlphas_40,4)
+AlphaOptim <- function(alphaHat, alphaTarget, df){
+  (mean(df < alphaHat, na.rm = T) - alphaTarget)^2
+}
+
+
+GetEmpAlpha <- function(data, alphaTarget){
+  res <- list()
+  ### First: Unfiltered Genes for n == 10
+  res$unfiltered$"10" <- sapply(1:9, function(i){                                                      # for all 9 methods
+    df <- as.data.frame(data$geneData$unfiltered$"10"[i,])               # Filter our NDe Genes
+    df <- df[!permResults$plotData$unfiltered$deMask,]
+    optimize(AlphaOptim, interval = c(0,1), alphaTarget = alphaTarget, df = as.matrix(df))[[1]]
+  }
+  )
+  ### First: Unfiltered Genes for n == 40
+  res$unfiltered$"40" <- sapply(1:9, function(i){                                                      # for all 9 methods
+    df <- as.data.frame(data$geneData$unfiltered$"40"[i,])               # Filter our NDe Genes
+    df <- df[!permResults$plotData$unfiltered$deMask,]
+    optimize(AlphaOptim, interval = c(0,1), alphaTarget = alphaTarget, df = as.matrix(df))[[1]]
+  }
+  )
+  ### First: Filtered Genes for n == 10
+  res$filtered$"10" <- sapply(1:9, function(i){                                                      # for all 9 methods
+    df <- as.data.frame(data$geneData$filtered$"10"[i,])               # Filter our NDe Genes
+    df <- df[!permResults$plotData$filtered$deMask,]
+    optimize(AlphaOptim, interval = c(0,1), alphaTarget = alphaTarget, df = as.matrix(df))[[1]]
+  }
+  )
+  ### First: Filtered Genes for n == 40
+  res$filtered$"40" <- sapply(1:9, function(i){                                                      # for all 9 methods
+    df <- as.data.frame(data$geneData$filtered$"40"[i,])               # Filter our NDe Genes
+    df <- df[!permResults$plotData$filtered$deMask,]
+    optimize(AlphaOptim, interval = c(0,1), alphaTarget = alphaTarget, df = as.matrix(df))[[1]]
+  }
+  )
+  
+  res
+}
+
+permResults$alphaAdjusted <- GetEmpAlpha(permResults, 0.05)
 ```
-
-
 
 
 ```{r}
 library(tidyr)
-a <- 0.01
+a <- 0.05
 t1_data_nominal   <- GetT1Data(PlotData = PermResults$plot_data,
                        GeneData = PermResults$GeneData$Unfiltered, 
                        alphas = rep(a, 12))

@@ -1,41 +1,34 @@
-MWUPipeline = function(X, Y, roundDigits = 0, filtering = F, ...){
-  #Takes X, a table of counts and Y, a factor with two levels.
-  #Returns  unsorted topTable
+MWUPipeline = function(Y, X, roundDigits = 0, filtering = F, ...){
 
-  g1 <- Y== Y[1]
-  rn <- row.names(X)
+  ### Created Mask from Group Labels and initiate dge object
+  g1    <- X == X[1]
+  rn    <- row.names(Y)
+  dge    <- edgeR::DGEList(counts=Y)
 
-
-  design = model.matrix(~ Y)
-
-  dge = edgeR::DGEList(counts=X)
-
-
-  # filtering
+  ### filtering
   if (filtering){
-    keep = edgeR::filterByExpr(dge, design)
+    keep = edgeR::filterByExpr(dge)
     dge  = dge[keep,,keep.lib.sizes=FALSE]
 
   }
 
-
+  ### Compute counts per million normalized by library sizes
   dge <- edgeR::calcNormFactors(dge, method="TMM")
-
-  #compute counts per million normalized by library sizes
   dgeCpm <- round(edgeR::cpm(dge), roundDigits)
 
-  # Apply Wilcoxon Test to All Genes
+  ### Apply Wilcoxon Test to All Genes using mask
   pVals <- sapply(1:nrow(dgeCpm), function(i) {
     wilcox.test(dgeCpm[i, g1], dgeCpm[i, !g1])$p.value
   })
 
-
+  ### If we only computed p-values for the not-filtered genes, pad the rest w. NAs
   if (filtering){
     df <- data.frame(row.names = rn, pValue = rep(NA, length(rn)))
-    df[keep, 1] <- p_vals
+    df[keep, 1] <- pVals
+    pVals <- df$pValue
+    
   } else {
-    df <- data.frame(row.names = rn, p.value = pVals)
+    df <- data.frame(row.names = rn, pValue = pVals)
   }
-
-  return(df)
+  return(df$pValue)
 }

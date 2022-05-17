@@ -1,4 +1,4 @@
-DirectPermutationsPipeline <- function(X, Y, nFlips, filtering = F, verbose = F){
+DirectPermutationsPipeline <- function(Y, X, nFlips, filtering = F, verbose = F){
 
   rn <- row.names(X)
 
@@ -36,13 +36,13 @@ DirectPermutationsPipeline <- function(X, Y, nFlips, filtering = F, verbose = F)
   })
 
   if (filtering){
-    df <- data.frame(row.names = rn, p.value = rep(NA, length(rn)))
+    df <- data.frame(row.names = rn, pValue = rep(NA, length(rn)))
     df[keep, 1] <- pVals
   } else {
-    df <- data.frame(row.names = rn, p.value = pVals)
+    df <- data.frame(row.names = rn, pValue = pVals)
   }
 
-  return(df)
+  return(df$pValue)
 }
 
 
