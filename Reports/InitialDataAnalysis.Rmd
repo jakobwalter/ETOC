@@ -1,6 +1,9 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "ETOC: Initial Data Analysis"
+output:
+  html_document:
+    toc: true
+    theme: united
 ---
 
 # 1. Downloading and Preprocessing Data

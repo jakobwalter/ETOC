@@ -1,7 +1,11 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "ETOC: Permutation Study"
+output:
+  html_document:
+    toc: true
+    theme: united
 ---
+
 
 # Permutation Study Unfiltered
 
@@ -10,6 +14,7 @@ set.seed(123)
 library(dplyr)
 library(MASS)
 library(ggplot2)
+library(tidyr)
 
 ### Load Helper Functions
 sapply(list.files("../functions/"), function(f) source(paste0("../functions/", f)))
@@ -34,6 +39,14 @@ colSums(LIHCResDE, na.rm = T)
 
 ### Rename Genes to Integers
 rownames(tcgaDataCleaned$counts) <- 1:nrow(tcgaDataCleaned$counts)
+
+### Load previous simulation results or create new list
+resFileName <- paste0(dataDir, "LIHCPermutationResults.Rds")
+if (file.exists(resFileName)){
+  permResults <- readRDS(resFileName)
+} else{
+  permResults <- list()
+}
 ```
 
 
@@ -77,14 +90,6 @@ rm(cMax, cAll)
 ### Set Simulation Parameters
 nRepl <- 100
 nList <- list("10" = 10,  "40" = 40)
-
-### Load previous simulation results or create new list
-resFileName <- paste0(dataDir, "LIHCPermutationResults.Rds")
-if (file.exists(resFileName)){
-  permResults <- readRDS(resFileName)
-} else{
-  permResults <- list()
-}
 
 permResults$plotData$unfiltered <- plotData
 saveRDS(permResults, file = resFileName)
@@ -244,11 +249,11 @@ permResults <- readRDS(resFileName)
 
 ```{r}
 GetModels <- function(t1Data, formula, sp = c(0.25, 0.25, 0.25)){
-  paramGrid <- expand.grid(Model = unique(t1_data$name),
-                            n =  as.character(unique(t1_data$n)),
+  paramGrid <- expand.grid(Model = unique(t1Data$name),
+                            n =  as.character(unique(t1Data$n)),
                             DE = c(T,F))
   fittedModels <- apply(paramGrid, 1, function(p){
-    mask <- t1Data$n == p["n"] & t1Data$de_mask == p["DE"] & t1Data$name == p["Model"]
+    mask <- t1Data$n == p["n"] & t1Data$deMask == p["DE"] & t1Data$name == p["Model"]
     b1 <- mgcv::gam(formula, data = t1Data[mask,],
                     family = mgcv::betar(eps = 0.0001), sp = sp)
     
@@ -264,14 +269,14 @@ GetPreds <- function(models, cutoffs){
            
  newd <- data.frame(mu = seq(cutoffs$mu[1], cutoffs$mu[2], length.out = 200),
                     phi = seq(cutoffs$phi[1], cutoffs$phi[2], length.out = 200),
-                    corr_max = seq(cutoffs$corr_max[1], cutoffs$corr_max[2],
+                    corrMax = seq(cutoffs$corrMax[1], cutoffs$corrMax[2],
                                    length.out = 200)
                     )
   
   margin.terms <- all.vars(models[[1]]$formula)[2:4]
   model.terms <- paste0("s(", all.vars(models[[1]]$formula)[2:4], ")")
   
-  model.terms <- c("s(log(mu))", "s(phi)", "s(corr_max)")
+  model.terms <- c("s(log(mu))", "s(phi)", "s(corrMax)")
   
   
   preds <- lapply(1:length(model.terms), function(i){
@@ -377,28 +382,28 @@ AlphaOptim <- function(alphaHat, alphaTarget, df){
 
 GetEmpAlpha <- function(data, alphaTarget){
   res <- list()
-  ### First: Unfiltered Genes for n == 10
+  ### Unfiltered Genes for n == 10
   res$unfiltered$"10" <- sapply(1:9, function(i){                                                      # for all 9 methods
     df <- as.data.frame(data$geneData$unfiltered$"10"[i,])               # Filter our NDe Genes
     df <- df[!permResults$plotData$unfiltered$deMask,]
     optimize(AlphaOptim, interval = c(0,1), alphaTarget = alphaTarget, df = as.matrix(df))[[1]]
   }
   )
-  ### First: Unfiltered Genes for n == 40
+  ### Unfiltered Genes for n == 40
   res$unfiltered$"40" <- sapply(1:9, function(i){                                                      # for all 9 methods
     df <- as.data.frame(data$geneData$unfiltered$"40"[i,])               # Filter our NDe Genes
     df <- df[!permResults$plotData$unfiltered$deMask,]
     optimize(AlphaOptim, interval = c(0,1), alphaTarget = alphaTarget, df = as.matrix(df))[[1]]
   }
   )
-  ### First: Filtered Genes for n == 10
+  ### Filtered Genes for n == 10
   res$filtered$"10" <- sapply(1:9, function(i){                                                      # for all 9 methods
     df <- as.data.frame(data$geneData$filtered$"10"[i,])               # Filter our NDe Genes
     df <- df[!permResults$plotData$filtered$deMask,]
     optimize(AlphaOptim, interval = c(0,1), alphaTarget = alphaTarget, df = as.matrix(df))[[1]]
   }
   )
-  ### First: Filtered Genes for n == 40
+  ###  Filtered Genes for n == 40
   res$filtered$"40" <- sapply(1:9, function(i){                                                      # for all 9 methods
     df <- as.data.frame(data$geneData$filtered$"40"[i,])               # Filter our NDe Genes
     df <- df[!permResults$plotData$filtered$deMask,]
@@ -412,82 +417,191 @@ GetEmpAlpha <- function(data, alphaTarget){
 permResults$alphaAdjusted <- GetEmpAlpha(permResults, 0.05)
 ```
 
+```{r}
+permResults$
+```
 
 ```{r}
-library(tidyr)
 a <- 0.05
-t1_data_nominal   <- GetT1Data(PlotData = PermResults$plot_data,
-                       GeneData = PermResults$GeneData$Unfiltered, 
-                       alphas = rep(a, 12))
+### Know, get type-I error for all genes using both the nominal level,
+### As well as the different adjusted alpha levels
+t1Data <- list()
+t1Data$nominal$unfiltered      <- GetT1Data(PlotData = permResults$plotData$unfiltered,
+                                          GeneData = permResults$geneData$unfiltered, 
+                                          alphas = rep(a, 12))
 
-t1_data_adjusted   <- GetT1Data(PlotData = PermResults$plot_data,
-                       GeneData = PermResults$GeneData$Unfiltered, 
-                       alphas = NomAlphas_10)
-t1_data_adjusted_40   <- GetT1Data(PlotData = PermResults$plot_data,
-                       GeneData = PermResults$GeneData$Unfiltered, 
-                       alphas = NomAlphas_40)
+t1Data$adjusted$unfiltered     <- GetT1Data(PlotData = permResults$plotData$unfiltered,
+                                            GeneData = permResults$geneData$unfiltered, 
+                                            alphas = permResults$alphaAdjusted$unfiltered$"10")
 
-t1_data_adjusted$value[t1_data_adjusted$n == 40] <-
-  t1_data_adjusted_40$value[t1_data_adjusted$n == 40]
+t1DataAdjustedUnfiltered40   <- GetT1Data(PlotData = permResults$plotData$unfiltered,
+                                          GeneData = permResults$geneData$unfiltered, 
+                                          alphas = permResults$alphaAdjusted$unfiltered$"40")
+
+### Replace the t1 Data such that it corresponds to the correct sample size
+t1Data$adjusted$unfiltered$value[t1Data$adjusted$unfiltered$n == 40] <-
+  t1DataAdjustedUnfiltered40$value[t1DataAdjustedUnfiltered40$n == 40]
+
+### Repeat for filtered data
+t1Data$nominal$filtered      <- GetT1Data(PlotData = permResults$plotData$filtered,
+                                          GeneData = permResults$geneData$filtered, 
+                                          alphas = rep(a, 12))
+
+t1Data$adjusted$filtered     <- GetT1Data(PlotData = permResults$plotData$filtered,
+                                            GeneData = permResults$geneData$filtered, 
+                                            alphas = permResults$alphaAdjusted$filtered$"10")
+
+t1DataAdjustedfiltered40   <- GetT1Data(PlotData = permResults$plotData$filtered,
+                                          GeneData = permResults$geneData$filtered, 
+                                          alphas = permResults$alphaAdjusted$filtered$"40")
+
+### Replace the t1 Data such that it corresponds to the correct sample size
+t1Data$adjusted$filtered$value[t1Data$adjusted$filtered$n == 40] <-
+  t1DataAdjustedfiltered40$value[t1DataAdjustedfiltered40 $n == 40]
+
+rm(t1DataAdjustedfiltered40, t1DataAdjustedUnfiltered40)
 
 
-t1_models_nominal <- GetModels(t1_data_nominal,
-                               as.formula(value ~ s(log(mu)) + s(phi) + s(corr_max)))
-t1_models_adjusted <- GetModels(t1_data_adjusted,
-                               as.formula(value ~ s(log(mu)) + s(phi) + s(corr_max)))
 
-cutoffs <- as.data.frame(apply(PermResults$plot_data[,1:3], 2, quantile, c(0, 0.75)))
-#cutoffs$mu <- log(cutoffs$mu)
-t1_preds_nominal  <- GetPreds(t1_models_nominal, cutoffs)
-t1_preds_adjusted  <- GetPreds(t1_models_adjusted, cutoffs)
+
+### For each of the Type-I errors, fit Generalized Additive Models (GAMs)
+t1Models <- list()
+t1Models$nominal$unfiltered  <- GetModels(t1Data$nominal$unfiltered,
+                                        as.formula(value ~ s(log(mu)) + s(sqrt(phi)) + s(corrMax)))
+t1Models$adjusted$unfiltered <- GetModels(t1Data$adjusted$unfiltered,
+                                          as.formula(value ~ s(log(mu)) + s(sqrt(phi)) + s(corrMax)))
+
+t1Models$nominal$filtered  <- GetModels(t1Data$nominal$filtered,
+                                        as.formula(value ~ s(log(mu)) + s(sqrt(phi)) + s(corrMax)))
+t1Models$adjusted$filtered <- GetModels(t1Data$adjusted$filtered,
+                                        as.formula(value ~ s(log(mu)) + s(sqrt(phi)) + s(corrMax)))
+
+
+### Now, compute cutoffs for which we want to plot the models,
+### Use the predict function to obtain the actual curve
+t1Preds <- list()
+cutoffs <- as.data.frame(apply(permResults$plotData$unfiltered[,1:3], 2, quantile, c(0, 0.95)))
+t1Preds$nominal$unfiltered  <- GetPreds(t1Models$nominal$unfiltered, cutoffs)
+t1Preds$adjusted$unfiltered  <- GetPreds(t1Models$adjusted$unfiltered, cutoffs)
+
+cutoffs <- as.data.frame(apply(permResults$plotData$filtered[,1:3], 2, quantile, c(0, 0.95)))
+t1Preds$nominal$filtered  <- GetPreds(t1Models$nominal$filtered, cutoffs)
+t1Preds$adjusted$filtered  <- GetPreds(t1Models$adjusted$filtered, cutoffs)
 ```
 
 
 ```{r}
+
+```
+
+```{r}
+labelOrder <- row.names(permResults$geneData$unfiltered$"10")
 title_name <- "Probability of Rejection under H_0"
-p1 <- t1_data_nominal %>% 
-  dplyr::filter(de_mask == F) %>%
+p1 <- t1Data$nominal$unfiltered %>% 
+  dplyr::filter(deMask == F) %>%
   ggplot(aes(x = name, y = value)) +
   geom_boxplot()+
   facet_wrap(~n) +
-  scale_x_discrete(guide = guide_axis(angle = 90)) +
+  scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
   labs(y = "P(p <= 0.01)", title = title_name) +
   geom_hline(yintercept = a) +
   scale_y_log10() +
   scale_y_continuous(breaks= c(0, 0.05, 0.1, 0.2, 0.4, 0.5, 1))
 
-file_name <- paste("../plots/PermUF", 
+file_name <- paste("../plots/Unfiltered", 
                    gsub(" ", "_", title_name, fixed = T), ".png", 
                    sep = "")
 
 ggsave(file_name, p1)
+
+title_name <- "Probability of Rejection under H_0"
+p1 <- t1Data$nominal$filtered %>% 
+  dplyr::filter(deMask == F) %>%
+  ggplot(aes(x = name, y = value)) +
+  geom_boxplot()+
+  facet_wrap(~n) +
+  scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
+  labs(y = "P(p <= 0.01)", title = title_name) +
+  geom_hline(yintercept = a) +
+  scale_y_log10() +
+  scale_y_continuous(breaks= c(0, 0.05, 0.1, 0.2, 0.4, 0.5, 1))
+
+fileName <- paste("../plots/Filtered", 
+                   gsub(" ", "_", title_name, fixed = T), ".png", 
+                   sep = "")
+
+ggsave(fileName, p1)
 ```
 
 
 ```{r}
+### Power Boxplots
 title_name <- "Probability of Rejection under H_A"
-p1 <- t1_data_adjusted %>% 
-  dplyr::filter(de_mask == T) %>%
+p1 <- t1Data$adjusted$unfiltered %>% 
+  dplyr::filter(deMask == T) %>%
   ggplot(aes(x = name, y = value)) +
   geom_boxplot()+
   facet_wrap(~n) +
-  scale_x_discrete(guide = guide_axis(angle = 90)) +
+  scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
   labs(y = "P(p <= 0.01)", title = title_name) +
   scale_y_log10() +
   scale_y_continuous(breaks= c(0, 0.05, 0.1, 0.2, 0.5, 1))
 
-file_name <- paste("../plots/PermUF", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
+file_name <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), "AdjustedUnfiltered.png", sep = "")
+
+ggsave(file_name, p1)
+
+title_name <- "Probability of Rejection under H_A"
+p1 <- t1Data$adjusted$filtered %>% 
+  dplyr::filter(deMask == T) %>%
+  ggplot(aes(x = name, y = value)) +
+  geom_boxplot()+
+  facet_wrap(~n) +
+  scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
+  labs(y = "P(p <= 0.01)", title = title_name) +
+  scale_y_log10() +
+  scale_y_continuous(breaks= c(0, 0.05, 0.1, 0.2, 0.5, 1))
+
+file_name <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), "Adjustedfiltered.png", sep = "")
+
+ggsave(file_name, p1)
+```
+
+```{r}
+### Power Boxplots of
+title_name <- "Probability of Rejection under H_A"
+p1 <- t1Data$nominal$unfiltered %>% 
+  dplyr::filter(deMask == T) %>%
+  ggplot(aes(x = name, y = value)) +
+  geom_boxplot()+
+  facet_wrap(~n) +
+  scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
+  labs(y = "P(p <= 0.01)", title = title_name) +
+  scale_y_log10() +
+  scale_y_continuous(breaks= c(0, 0.05, 0.1, 0.2, 0.5, 1))
+
+file_name <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), "NominalUnfiltered.png", sep = "")
+
+ggsave(file_name, p1)
+
+title_name <- "Probability of Rejection under H_A"
+p1 <- t1Data$nominal$filtered %>% 
+  dplyr::filter(deMask == T) %>%
+  ggplot(aes(x = name, y = value)) +
+  geom_boxplot()+
+  facet_wrap(~n) +
+  scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
+  labs(y = "P(p <= 0.01)", title = title_name) +
+  scale_y_log10() +
+  scale_y_continuous(breaks= c(0, 0.05, 0.1, 0.2, 0.5, 1))
+
+file_name <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), "Nominalfiltered.png", sep = "")
 
 ggsave(file_name, p1)
 ```
 
 
-
 ## Rankings
-
-```{r}
-PermResults$GeneData$Unfiltered$"10"
-```
 
 ```{r}
 title_name <- "Difference in Mean Ranks"
@@ -545,70 +659,52 @@ GetPlots <- function(preds, modelnames, DE, title, ymax = 1){
 }
 ```
 
-```{r}
-methods
-```
+
 
 ```{r Plots for Parametric Methods under H0}
-methods <- unique(t1_data_nominal$name)
 title_name <- "Parametric Methods under H0"
-p_all <- GetPlots(t1_preds_nominal,
-                  methods[1:4], DE = "NDE", title =  title_name, ymax = 0.5)
+p_all <- GetPlots(t1Preds$nominal$unfiltered, labelOrder[1:4], DE = "NDE", title =  title_name, ymax = 0.5)
 file_name_H0 <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
-cowplot::save_plot(p_all, filename = file_name_H0, nrow =3)                    
-```
+cowplot::save_plot(p_all, filename = file_name_H0, nrow =3)    
 
-
-
-```{r Plots for Parametric Methods under HA}
 title_name <- "Parametric Methods under HA"
-p_all <- GetPlots(t1_preds_adjusted, methods[1:4], DE = "DE", title =  title_name)
+p_all <- GetPlots(t1Preds$adjusted$unfiltered, labelOrder[1:4], DE = "DE", title =  title_name)
 file_name_H0 <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
-cowplot::save_plot(p_all, filename = file_name_H0, nrow =3)                    
-```
+cowplot::save_plot(p_all, filename = file_name_H0, nrow =3)  
 
-```{r Plots for Nonparametric Methods under H0}
 title_name <- "Nonparametric Methods under H0"
-p_all <- GetPlots(t1_preds_nominal, methods[5:9], DE = "NDE", title =  title_name, ymax = 0.5)
+p_all <- GetPlots(t1Preds$nominal$unfiltered, labelOrder[5:9], DE = "NDE", title =  title_name, ymax = 0.5)
 file_name_H0 <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
-cowplot::save_plot(p_all, filename = file_name_H0, nrow =3)                    
-```
+cowplot::save_plot(p_all, filename = file_name_H0, nrow =3)
 
-```{r}
-t1_preds_adjusted
-```
-
-
-```{r Plots for Nonparametric Methods under HA}
 title_name <- "Nonparametric Methods under HA"
-p_all <- GetPlots(t1_preds_adjusted, methods[5:9], DE = "DE", title =  title_name)
+p_all <- GetPlots(t1Preds$adjusted$unfiltered, labelOrder[5:9], DE = "DE", title =  title_name)
 file_name_H0 <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
-cowplot::save_plot(p_all, filename = file_name_H0, nrow =3)                    
+cowplot::save_plot(p_all, filename = file_name_H0, nrow =3)
+
 ```
 
 
 # Generation: H0 Setting with Large Sample Size
 
 ```{r}
-library(edgeR)
-library(tidyr)
-sapply(list.files("../R/"), function(f) source(paste0("../R/", f)))
+sapply(list.files("../functions/"), function(f) source(paste0("../functions/", f)))
 glm.nb <- MASS::glm.nb
-data.dir <- "../data/"
+dataDir <- "../data/"
 
-ResFileName <- paste0(data.dir, "LIHCGenerationResultsH0.Rds")
-tcga_data <- readRDS(paste0(data.dir, "TCGA-LIHC_processed.RDs"))
+resFileName <- paste0(dataDir, "LIHCGenerationResultsH0.Rds")
+tcgaData   <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
 
 DE_size <- 500
-p_genes <- DE_size*3
+p_genes <- DE_size*5
 ```
 
 
 
 ```{r Get Parameters for Simulation}
-rand_int <- sample(nrow(tcga_data$counts), 10000)
+randInt <- sample(nrow(tcgaData$counts), 10000)
 #compute norm factors for permutations
-d <- edgeR::DGEList(counts = tcga_data$counts[rand_int,], group = tcga_data$treatment)
+d <- edgeR::DGEList(counts = tcgaData$counts[randInt,])
 rownames(d) <-  1:nrow(d)
 
 d <- edgeR::calcNormFactors(d)
