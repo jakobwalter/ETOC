@@ -7,7 +7,9 @@ output:
 ---
 
 
-# Permutation Study Unfiltered
+# Non-Parametric Permutation Study
+
+## Permutation Study
 
 ```{r Setup}
 set.seed(123)
@@ -50,7 +52,6 @@ if (file.exists(resFileName)){
 ```
 
 
-# Load 
 ```{r}
 ### Create Masks for Genes that are Differentially Expressed (De)  and
 ### Not Differentially Expressed (NDe)
@@ -60,7 +61,7 @@ De <- rowSums(De, na.rm = T) >= 7
 NDe <- rowSums(NDe, na.rm = T) >= 5
 
 ### Get Random Selection of genes of a given size for a given ratio
-DeSize <- 50
+DeSize <- 500
 De  <- sample(which(De), DeSize)
 NDe <- sample(which(NDe), DeSize*5)
 YDe  <- tcgaDataCleaned$counts[De,]
@@ -109,10 +110,10 @@ RunAllMethods <- function(Y, X){
   res$EdgeRQl  <- EdgeRPipeline(Y, X, test = "ql")
   res$DESeq2   <- DESeq2Pipeline(Y, X)
   res$MWU      <- MWUPipeline(Y, X)
-  res$DP       <- DirectPermutationsPipeline(X, Y, nFlips = 100)
-  res$FsPB     <- FlipScoresPipeline(Y, X, "poisson", scoreType = "basic", nFlips = 20)
-  res$FsPE     <- FlipScoresPipeline(Y, X, "poisson", scoreType = "effective", nFlips = 20)
-  res$FsPS     <- FlipScoresPipeline(Y, X, "poisson", scoreType = "standardized", nFlips = 20)
+  res$DP       <- DirectPermutationsPipeline(X, Y, nFlips = 1000)
+  res$FsPB     <- FlipScoresPipeline(Y, X, "poisson", scoreType = "basic", nFlips = 100)
+  res$FsPE     <- FlipScoresPipeline(Y, X, "poisson", scoreType = "effective", nFlips = 100)
+  res$FsPS     <- FlipScoresPipeline(Y, X, "poisson", scoreType = "standardized", nFlips = 100)
   }))
   return(res)
   
@@ -144,60 +145,9 @@ print(Sys.time() - t0)
 ```
 
 
-```{r Prepare Data w. Filtering}
-### Create Masks for Genes that are Differentially Expressed (De)  and
-### Not Differentially Expressed (NDe)
-De  <- LIHCRes <= 0.01
-NDe <- LIHCRes > 0.1
-De <- rowSums(De, na.rm = T) >= 7
-NDe <- rowSums(NDe, na.rm = T) >= 5
-### Get Random Selection of genes of a given size for a given ratio
-DeSize <- 100
-De  <- sample(which(De), DeSize)
-NDe <- sample(which(NDe), DeSize*5)
-YDe  <- tcgaDataCleaned$counts[De,]
-YNDe <- tcgaDataCleaned$counts[NDe,]
-YAll <- rbind(YDe, YNDe)
-rownames(YAll) <- 1:nrow(YAll)
-XAll <- tcgaDataCleaned$group == "Primary solid Tumor"   
-
-### Compute norm factors and Dispersion on full dataset for later analyses
-dAll <- edgeR::DGEList(counts = YAll, group = XAll)
-dAll <- edgeR::calcNormFactors(dAll)
-dAll <- edgeR::estimateDisp(dAll)
-
-### Maximum Absolute Correlation for each gene
-cAll <- abs(cor(t(edgeR::cpm(dAll))))
-diag(cAll) <- 0
-cMax <- apply(cAll, 2, max) 
-
-### save plotting data
-plotData <- data.frame(mu = rowMeans(dAll$counts * dAll$samples$norm.factors),
-                        phi = dAll$tagwise.dispersion,
-                        corrMax = cMax,
-                        deMask = 1:nrow(dAll) <= DeSize)
-
-rm(cMax, cAll)
-
-### Set Simulation Parameters
-nRepl <- 100
-nList <- list("10" = 10,  "40" = 40)
-
-### Load previous simulation results or create new list
-resFileName <- paste0(dataDir, "LIHCPermutationResults.Rds")
-if (file.exists(resFileName)){
-  permResults <- readRDS(resFileName)
-} else{
-  permResults <- list()
-}
-
-permResults$plotData$filtered <- plotData
-saveRDS(permResults, file = resFileName)
-rm(plotData)
-```
-
 
 ```{r Running Simulation w Filtering}
+nRepl <- 200
 t0 <- Sys.time()   
 ### For Each Sample Size n:
 permResults$geneData$filtered <- lapply(nList, function(n){
@@ -230,15 +180,12 @@ permResults$geneData$filtered <- lapply(nList, function(n){
 
 saveRDS(permResults, file = resFileName)
 print(Sys.time() - t0)
-
-
-
 ```
 
 
 
 
-## Create Plots
+# Creation of Plots
 
 ```{r}
 dataDir <- "../data/"
@@ -297,8 +244,6 @@ GetPreds <- function(models, cutoffs){
 ```
 
 
-
-## Plots
 
 ```{r  qq plot unfiltered}
 pSeq <- seq(0, 0.1, by = 0.01)
@@ -417,9 +362,6 @@ GetEmpAlpha <- function(data, alphaTarget){
 permResults$alphaAdjusted <- GetEmpAlpha(permResults, 0.05)
 ```
 
-```{r}
-permResults$
-```
 
 ```{r}
 a <- 0.05
@@ -491,10 +433,6 @@ t1Preds$adjusted$filtered  <- GetPreds(t1Models$adjusted$filtered, cutoffs)
 
 
 ```{r}
-
-```
-
-```{r}
 labelOrder <- row.names(permResults$geneData$unfiltered$"10")
 title_name <- "Probability of Rejection under H_0"
 p1 <- t1Data$nominal$unfiltered %>% 
@@ -532,7 +470,6 @@ fileName <- paste("../plots/Filtered",
 
 ggsave(fileName, p1)
 ```
-
 
 ```{r}
 ### Power Boxplots
@@ -580,11 +517,11 @@ p1 <- t1Data$nominal$unfiltered %>%
   scale_y_log10() +
   scale_y_continuous(breaks= c(0, 0.05, 0.1, 0.2, 0.5, 1))
 
-file_name <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), "NominalUnfiltered.png", sep = "")
+fileName <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), "NominalUnfiltered.png", sep = "")
 
-ggsave(file_name, p1)
+ggsave(fileName, p1)
 
-title_name <- "Probability of Rejection under H_A"
+titleName <- "Probability of Rejection under H_A"
 p1 <- t1Data$nominal$filtered %>% 
   dplyr::filter(deMask == T) %>%
   ggplot(aes(x = name, y = value)) +
@@ -597,15 +534,11 @@ p1 <- t1Data$nominal$filtered %>%
 
 file_name <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), "Nominalfiltered.png", sep = "")
 
-ggsave(file_name, p1)
+ggsave(fileName, p1)
 ```
 
-
-## Rankings
-
-```{r}
+```{r Rankings}
 title_name <- "Difference in Mean Ranks"
-
 res <- lapply(PermResults$GeneData$Unfiltered, function(i){
   apply(i, 1, function(col){
     df <- as.data.frame(col)
@@ -659,8 +592,6 @@ GetPlots <- function(preds, modelnames, DE, title, ymax = 1){
 }
 ```
 
-
-
 ```{r Plots for Parametric Methods under H0}
 title_name <- "Parametric Methods under H0"
 p_all <- GetPlots(t1Preds$nominal$unfiltered, labelOrder[1:4], DE = "NDE", title =  title_name, ymax = 0.5)
@@ -685,44 +616,36 @@ cowplot::save_plot(p_all, filename = file_name_H0, nrow =3)
 ```
 
 
-# Generation: H0 Setting with Large Sample Size
+# Generation: Equal Distributions
 
 ```{r}
-sapply(list.files("../functions/"), function(f) source(paste0("../functions/", f)))
+### Loading Data an Helper Functions
+. <- sapply(list.files("../functions/"), function(f) source(paste0("../functions/", f)))
 glm.nb <- MASS::glm.nb
 dataDir <- "../data/"
 
 resFileName <- paste0(dataDir, "LIHCGenerationResultsH0.Rds")
 tcgaData   <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
 
-DE_size <- 500
-p_genes <- DE_size*5
-```
+DeSize <- 500
+pGenes <- DeSize*6
 
-
-
-```{r Get Parameters for Simulation}
+### Get Parameters for Simulation
 randInt <- sample(nrow(tcgaData$counts), 10000)
-#compute norm factors for permutations
 d <- edgeR::DGEList(counts = tcgaData$counts[randInt,])
 rownames(d) <-  1:nrow(d)
-
 d <- edgeR::calcNormFactors(d)
 d <- edgeR::estimateDisp(d)
-
-#define parameters
 phi <- d$tagwise.dispersion
 mu <- rowMeans(d$counts*d$samples$norm.factors)
-mu_1 <- mu_2 <-  mu[phi < 6][1:p_genes]
-phi_1 <- phi_2 <- phi[phi < 6][1:p_genes]
+mu_1 <- mu_2 <-  mu[1:p_genes]
+phi_1 <- phi_2 <- phi[1:p_genes]
 
-#create differential expression
+### Create differential expression
 mu_2[1:(DE_size/2)] <- mu_2[1:(DE_size/2)]*2
 mu_2[((DE_size/2)+1):DE_size] <- mu_2[((DE_size/2)+1):DE_size]/2
-```
 
-
-```{r}
+### Initiate
 GenResults <-list()
 GenResults$plot_data <- data.frame(mu_1 = mu_1,
                         mu_2 = mu_2,
@@ -733,7 +656,6 @@ GenResults$plot_data <- data.frame(mu_1 = mu_1,
 n_list <- list("10" = 10, "40" = 40, "200" = 200)
 n_repl <- 2 #ca. 17:00
 ```
-
 
 ```{r}
 t0 <- Sys.time()
