@@ -401,7 +401,7 @@ pVals <- sapply(1:nrow(tcgaDataCleaned$counts),
                  )
 print(Sys.time() - t0)
 
-tcgaData$Results$FsPoisSt <- pVals
+tcgaData$Results$FsPS <- pVals
 saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 
 rm(d, os, pVals, rn, t0, Y)

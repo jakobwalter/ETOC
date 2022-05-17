@@ -40,7 +40,7 @@ NDE <- LIHCRes > 0.1
 DE <- rowSums(DE, na.rm = T) >= 7
 NDE <- rowSums(NDE, na.rm = T) >= 5
 
-DESize <- 200
+DESize <- 1000
 
 #get random genes 
 DE  <- sample(which(DE), DESize)
@@ -112,12 +112,12 @@ suppressMessages(suppressWarnings(
     res$DESeq2   <- DESeq2Pipeline(XYData$X, XYData$Y)$p.value
     res$Limma    <- LimmaPipeline(XYData$X, XYData$Y, filtering = F)$p.value
     res$MWU       <- MWUPipeline(XYData$X, XYData$Y)$p.value
-    res$DP <- DirectPermutationsPipeline(XYData$X, XYData$Y, nFlips = 400)$p.value
-    res$FsP.B     = FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
+    res$DP <- DirectPermutationsPipeline(XYData$X, XYData$Y, nFlips = 1000)$p.value
+    res$FsPB     = FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
                                        scoreType = "basic", nFlips = 200)$p.value
-    res$FsP.E = FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
+    res$FsPE = FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
                                    scoreType = "effective", nFlips = 200)$p.value
-    res$FsP.S  = FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
+    res$FsPS  = FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
                                     scoreType = "standardized", nFlips = 200)$p.value
     return(res)
     })
@@ -128,15 +128,15 @@ print(Sys.time() - t0)
 ```
 
 
-# Load 
-```{r}
+
+```{r w Filtering}
 DE <- LIHCRes <= 0.01
 NDE <- LIHCRes > 0.1
 
 DE <- rowSums(DE, na.rm = T) >= 7
 NDE <- rowSums(NDE, na.rm = T) >= 5
 
-DESize <- 400
+DESize <- 500
 
 #get random genes 
 DE  <- sample(which(DE), DESize)
@@ -168,7 +168,7 @@ plotData <- data.frame(mu = rowMeans(dAll$counts * dAll$samples$norm.factors),
 
 rm(cMax, cAll)
 
-nRepl <- 200
+nRepl <- 100
 ResFileName <- paste0(dataDir, "LIHCPermutationResults.Rds")
 
 nList <- list("10" = 10,  "40" = 40)
@@ -185,105 +185,67 @@ PermResults$plotData$Filtered <- plotData
 saveRDS(PermResults, file = ResFileName)
 ```
 
+
 ```{r Running Simulation w Filtering}
 t0 <- Sys.time()    
-
 suppressMessages(suppressWarnings(
   ### For Each Sample Size n:
-  PermResults$GeneData$filtered <- lapply(n_list, function(n){
+  PermResults$geneData$Filtered <- lapply(nList, function(n){
   print(n)
   c <- 0
-  t_n <- Sys.time()
+  tN <- Sys.time()
   ### Inner Loop: Replicate n_repl times
-  replicate(n_repl,{
-    cat("\r",
-        "Progress: ", round(c/n_repl,3),  
-        "Time Remaining: ", 
-        round(difftime(Sys.time(), t_n, units = "mins")/(c/n_repl)*(1- c/n_repl), 2), " min    ")
+  replicate(nRepl,{
+    PrintProgress(c, nRepl, tN)
     c <<- c + 1
-    XY_data <- GetXYperm(n, X_DE = X_DE, X_NDE = X_NDE, Y_all, DE_size,
-                         d_all$samples$norm.factors)
-    
-    rn <- rownames(XY_data$X)
+    XYData <- GetXYperm(n, XDE = XDE, XNDE = XNDE, YAll, DESize,
+                         dAll$samples$norm.factors)
+    rn <- rownames(XYData$X)
     ### Filtering
-    d <- edgeR::DGEList(counts = XY_data$X)
+    d <- edgeR::DGEList(counts = XYData$X)
     d <- edgeR::calcNormFactors(d)
     keep = edgeR::filterByExpr(d)
     d <- d[keep,]
-    XY_data$X <- d$counts
+    XYData$X <- d$counts
     
     res <- list()
-    res$EdgerEt  <- EdgeRPipeline(XY_data$X, XY_data$Y, test = "exact",
+    res$EdgerEt  <- EdgeRPipeline(XYData$X, XYData$Y, test = "exact",
                                   filtering = F)$p.value
-    res$EdgerQl  <- EdgeRPipeline(XY_data$X, XY_data$Y, test = "ql",
+    res$EdgerQl  <- EdgeRPipeline(XYData$X, XYData$Y, test = "ql",
                                      filtering = F)$p.value
-    res$DESeq2   <- DESeq2Pipeline(XY_data$X, XY_data$Y)$p.value
-    res$Limma    <- LimmaPipeline(XY_data$X, XY_data$Y, filtering = F)$p.value
-    res$MW       <- MWUPipeline(XY_data$X, XY_data$Y)$p.value
-    res$DP       <- DPPipeline(XY_data$X, XY_data$Y, n_flips = 200)$p.value
-    res$FsPoisB  <- FlipScoresPipeline(XY_data$X, XY_data$Y, "poisson",
-                                       score_type = "basic", n_flips = 40)$p.value
-    res$FsPoisE  <- FlipScoresPipeline(XY_data$X, XY_data$Y, "poisson",
-                                   score_type = "effective", n_flips = 40)$p.value
-    res$FsPoisS  <- FlipScoresPipeline(XY_data$X, XY_data$Y, "poisson",
-                                       score_type = "standardized", n_flips = 40)$p.value
-    
+    res$DESeq2   <- DESeq2Pipeline(XYData$X, XYData$Y)$p.value
+    res$Limma    <- LimmaPipeline(XYData$X, XYData$Y, filtering = F)$p.value
+    res$MWU      <- MWUPipeline(XYData$X, XYData$Y)$p.value
+    res$DP       <- DirectPermutationsPipeline(XYData$X, XYData$Y, nFlips = 1000)$p.value
+    res$FsPB     <- FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
+                                       scoreType = "basic", nFlips = 200)$p.value
+    res$FsPE     <- FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
+                                       scoreType = "effective", nFlips = 200)$p.value
+    res$FsPS     <- FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
+                                       scoreType = "standardized", nFlips = 200)$p.value
     
     df <- data.frame(row.names = rn, matrix(nrow = length(rn), ncol = 9))
     df[keep, ] <- as.data.frame(res)
-  
+    
     return(df)
     })
   })
 ))
 saveRDS(PermResults, file = ResFileName)
 print(Sys.time() - t0)
+
+rm(tcgaDataCleaned, dALL, LIHCResDE, nList, XAll, XDE, XNDE, DE, NDE)
 ```
 
 
-```{r}
-rm(d_all, LIHC_res, LIHC_res_DE, n_list, plot_data, tcga_data, X_all, X_DE,
-   X_NDE, mask_na)
-```
 
-```{r}
-system('shutdown -s')
-```
-
-```{r Setup Visualization}
-set.seed(123)
-library(dplyr)
-library(MASS)
-library(ggplot2)
-sapply(list.files("../R/"), function(f) source(paste0("../R/", f)))
-
-data.dir <- "../data/"
-tcga_data <- readRDS(paste0(data.dir, "TCGA-LIHC_processed.RDs"))
-LIHC_res <- readRDS(paste0(data.dir, "TCGA-LIHC_results.RDs"))
-names_list <- names(LIHC_res)
-LIHC_res <- as.data.frame(LIHC_res)
-colnames(LIHC_res) <- names_list
-
-### Compute Rejected Genes and print number of Rejections for all Methods
-LIHC_res_DE <- LIHC_res <= 0.01
-colSums(LIHC_res_DE, na.rm = T)
-
-rownames(tcga_data$counts) <- 1:nrow(tcga_data$counts)
-```
 ## Create Plots
 
 ```{r}
-library(ggplot2)
-library(mgcv)
-library(tidyr)
-
-data.dir <- "../data/"
-tcga_data <- readRDS(paste0(data.dir, "TCGA-LIHC_processed.RDs"))
-ResFileName <- paste0(data.dir, "LIHCPermutationResults.Rds")
-sapply(list.files("../R/"), function(f) source(paste0("../R/", f)))
+tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
+ResFileName <- paste0(dataDir, "LIHCPermutationResults.Rds")
 PermResults <- readRDS(ResFileName)
 ```
-
 
 ```{r}
 GetModels <- function(t1_data, formula, sp = c(0.25, 0.25, 0.25)){
@@ -336,15 +298,11 @@ GetPreds <- function(models, cutoffs){
 ```
 
 
-
-
-
 ## Plots
-
 
 ```{r  qq plot unfiltered}
 p_seq <- seq(0, 0.1, by = 0.01)
-df <- lapply(PermResults$GeneData$Unfiltered, function(i){
+df <- lapply(PermResults$geneData$Unfiltered, function(i){
   apply(i, 1, function(j){
     df <- as.data.frame(j)[!PermResults$plot_data$de_mask,]
     df <- tidyr::replace_na(df, list(rep(1, 120)))
