@@ -88,6 +88,27 @@ if (file.exists(ResFileName)){
 PermResults$plotData$Unfiltered = plotData
 saveRDS(PermResults, file = ResFileName)
 ```
+```{r}
+RunAllMethods <- function(X, Y){
+  res <- list()
+  res$EdgerEt  <- EdgeRPipeline(XYData$X, XYData$Y, test = "exact",
+                                  filtering = F)$p.value
+  res$EdgerQl  <- EdgeRPipeline(XYData$X, XYData$Y, test = "ql",
+                                     filtering = F)$p.value
+  res$DESeq2   <- DESeq2Pipeline(XYData$X, XYData$Y)$p.value
+  res$Limma    <- LimmaPipeline(XYData$X, XYData$Y, filtering = F)$p.value
+  res$MWU      <- MWUPipeline(XYData$X, XYData$Y)$p.value
+  res$DP       <- DirectPermutationsPipeline(XYData$X, XYData$Y, nFlips = 1000)$p.value
+  res$FsPB     <- FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
+                                       scoreType = "basic", nFlips = 200)$p.value
+  res$FsPE     <- FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
+                                scoreType = "effective", nFlips = 200)$p.value
+  res$FsPS     <- FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
+                                 scoreType = "standardized", nFlips = 200)$p.value
+  return(res)
+  
+}
+```
 
 
 ```{r Running Simulation w/o Filtering}
@@ -104,21 +125,8 @@ suppressMessages(suppressWarnings(
     c <<- c + 1
     XYData <- GetXYperm(n, XDE = XDE, XNDE = XNDE, YAll, DESize,
                          dAll$samples$norm.factors)
-    res <- list()
-    res$EdgerEt  <- EdgeRPipeline(XYData$X, XYData$Y, test = "exact",
-                                  filtering = F)$p.value
-    res$EdgerQl  <- EdgeRPipeline(XYData$X, XYData$Y, test = "ql",
-                                     filtering = F)$p.value
-    res$DESeq2   <- DESeq2Pipeline(XYData$X, XYData$Y)$p.value
-    res$Limma    <- LimmaPipeline(XYData$X, XYData$Y, filtering = F)$p.value
-    res$MWU       <- MWUPipeline(XYData$X, XYData$Y)$p.value
-    res$DP <- DirectPermutationsPipeline(XYData$X, XYData$Y, nFlips = 1000)$p.value
-    res$FsPB     = FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
-                                       scoreType = "basic", nFlips = 200)$p.value
-    res$FsPE = FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
-                                   scoreType = "effective", nFlips = 200)$p.value
-    res$FsPS  = FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
-                                    scoreType = "standardized", nFlips = 200)$p.value
+    
+    res <- RunAllMethods(XYData$X, XYData$Y)
     return(res)
     })
   })
@@ -208,21 +216,7 @@ suppressMessages(suppressWarnings(
     d <- d[keep,]
     XYData$X <- d$counts
     
-    res <- list()
-    res$EdgerEt  <- EdgeRPipeline(XYData$X, XYData$Y, test = "exact",
-                                  filtering = F)$p.value
-    res$EdgerQl  <- EdgeRPipeline(XYData$X, XYData$Y, test = "ql",
-                                     filtering = F)$p.value
-    res$DESeq2   <- DESeq2Pipeline(XYData$X, XYData$Y)$p.value
-    res$Limma    <- LimmaPipeline(XYData$X, XYData$Y, filtering = F)$p.value
-    res$MWU      <- MWUPipeline(XYData$X, XYData$Y)$p.value
-    res$DP       <- DirectPermutationsPipeline(XYData$X, XYData$Y, nFlips = 1000)$p.value
-    res$FsPB     <- FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
-                                       scoreType = "basic", nFlips = 200)$p.value
-    res$FsPE     <- FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
-                                       scoreType = "effective", nFlips = 200)$p.value
-    res$FsPS     <- FlipScoresPipeline(XYData$X, XYData$Y, "poisson",
-                                       scoreType = "standardized", nFlips = 200)$p.value
+    res <- RunAllMethods(XYData$X, XYData$Y)
     
     df <- data.frame(row.names = rn, matrix(nrow = length(rn), ncol = 9))
     df[keep, ] <- as.data.frame(res)
