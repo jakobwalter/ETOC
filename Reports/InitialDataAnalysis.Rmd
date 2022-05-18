@@ -5,17 +5,18 @@ output:
     toc: true
     theme: united
 ---
-
 # 1. Downloading and Preprocessing Data
 
-
-```{r, results = FALSE}
+```{r, include=FALSE}
 ### Potentially, we will need the developer version of some packages:
 
 #devtools::install_github("BioinformaticsFMRP/TCGAbiolinks")
 #BiocManager::install("BioinformaticsFMRP/TCGAbiolinksGUI.data")
 #BiocManager::install("BioinformaticsFMRP/TCGAbiolinks")
+```
 
+
+```{r, results = hide}
 ### Set Seed and load packages
 set.seed(123)
 library("TCGAbiolinks")
@@ -40,19 +41,19 @@ reproList <- list("downloadingRawData" = FALSE | reproAll,
 dataDir <- "../data/"
 
 rm(reproAll)
+
+
+### Load Saved Data if we do not want to reproduce results
+if (!reproList$downloadingRawData){
+  message("Load Saved Data")
+  TCGAData <- readRDS(file = paste0(dataDir, "TCGALIHC.RDS"))
+} 
 ```
 ## 1.1 Downloading and Saving Data
 
-```{r}
-### First check if data already exists locally.
-### If we do not want to reproduce the download step,  load it from there
-if (file.exists(paste0(dataDir, "TCGALIHC.Rds")) | reproList$downloadingRawData){
-  message("Load Saved Data")
-  TCGAData <- readRDS(file = paste0(dataDir, "TCGALIHC.RDS"))
-  
-
-} else {
-  message("Download and Save Data")
+```{r, eval = reproList$downloadingRawData}
+if (reproList$downloadingRawData){
+  ### Download Data
   ### Search Data in TCGA Data Base
   queryTCGA = TCGAbiolinks::GDCquery(
     project = "TCGA-LIHC",
@@ -64,31 +65,27 @@ if (file.exists(paste0(dataDir, "TCGALIHC.Rds")) | reproList$downloadingRawData)
   TCGAbiolinks::GDCdownload(query = queryTCGA, 
                             directory = dataDir,
                             files.per.chunk = 50)
-  
+    
   ### Read and Prepare Downloaded Data
-  TCGAData <- TCGAbiolinks::GDCprepare(queryTCGA,
-                                          directory = dataDir)
-
+  TCGAData <- TCGAbiolinks::GDCprepare(queryTCGA, directory = dataDir)
   TCGAData <- list(counts = assay(TCGAData),
-                      patient = TCGAData$patient,
-                      group = TCGAData$definition,
-                      sampleType = TCGAData$sample_type)
-  ### Filter relevant data and Save Data to Specified path
-  saveRDS(object = TCGAData,
-          file = paste0(dataDir, "TCGALIHC.Rds"))
-  
+                   patient = TCGAData$patient,
+                   group = TCGAData$definition,
+                   sampleType = TCGAData$sample_type)
+  ###  Save Data to Specified path
+  #saveRDS(object = TCGAData,
+  #        file = paste0(dataDir, "TCGALIHC.Rds"))
+    
   ### Delete Unprepared Data
   unlink(paste0(dataDir, "TCGA-LIHC"), recursive=TRUE)
   rm(queryTCGA)
 }
 ```
 
-
-
 ```{r Check data}
 ### Create Mask with duplicate Samples
 duplicatedMask <- duplicated(TCGAData$patient)
-sum(duplicatedMask)
+nRemoved <- sum(duplicatedMask)
 patientMask <- TCGAData$patient %in% TCGAData$patient[duplicatedMask]
 
 ### The duplicate samples are coming from paired data, for which we delete
@@ -116,21 +113,19 @@ MDSData <- limma::plotMDS(dge, labels = 1:ncol(dge), col = as.numeric(dge$sample
        title = "MDS of TCGA-LIHC Data")
   )
 
-ggsave(fileName, MDSPlot)
-
+ggsave(fileName, MDSPlot, width = 10, height = 9, units = "cm")
 
 ### Remove Third Sample Type (Recurrent Tumor) and save processed data
 TCGAData$patientMaskDelete <- patientMaskDelete | TCGAData$sampleType == "Recurrent Tumor"
 
-
-saveRDS(object = TCGAData,
-          file = paste0(dataDir, "TCGALIHC.Rds"))
+#saveRDS(object = TCGAData,
+#          file = paste0(dataDir, "TCGALIHC.Rds"))
 
 rm(dge, MDSData, MDSPlot, TCGAData, duplicatedMask, keep, patientMask, 
    patientMaskDelete)
 ```
 
-
+We removed `nRemoved` samples to make our samples independent.
 
 # Ch.4: Parametric Methods
 Now, let us run all parametric models. First, important the packages.
@@ -141,7 +136,6 @@ tcgaDataCleaned$counts <- tcgaData$counts[,!tcgaData$patientMaskDelete]
 tcgaDataCleaned$group  <- tcgaData$group[!tcgaData$patientMaskDelete]
 ```
  
-
 
 ```{r Limma}
 ### Initialize DGEList Object
@@ -275,8 +269,8 @@ plotBins <- ggplot(mapping = aes(x = pEst, y = sqrt(d1$tagwise.dispersion))) +
   scale_y_sqrt() +
   labs(y = "BCV", x = "p") +
   scale_fill_gradient(trans = "sqrt",
-                      breaks = 2^c(3, 7, 9, 11), 
-                      labels = 2^c(3, 7, 9, 11))
+                      breaks = 2^c(3, 7, 9, 10), 
+                      labels = 2^c(3, 7, 9, 10))
 
 p4 <- ggplot(mapping = aes(x = sqrt(dgeUnshrunken$tagwise.dispersion), y = sqrt(dgeDefault$tagwise.dispersion))) +
   geom_point(alpha  = 0.15) +
@@ -294,7 +288,7 @@ rm(d, d1, design, dgeUnshrunken, p4, pAll, plotBins, plotEst, plotTrue, y, group
 ```
 
 
-```{r EdgeR QLM Test}
+```{r EdgeR QLM Test, eval = reproList$computingTCGALIHCResults}
 design <- model.matrix(~ tcgaDataCleaned$group)
 ### Normalize Data, Fit Model and Compute tests
 fit <- glmQLFit(dgeDefault, design)
@@ -305,7 +299,7 @@ tcgaData$Results$EdgeRQl <- qlf$table$PValue
 saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 ```
 
-```{r DESeq2}
+```{r DESeq2, eval = reproList$computingTCGALIHCResults}
 ### Initialize Object
 Y   <- data.frame("treatment" = as.factor(tcgaDataCleaned$group))
 dds <- DESeq2::DESeqDataSetFromMatrix(tcgaDataCleaned$counts,
@@ -324,7 +318,7 @@ saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 
 # Ch. 5 Non-Parametric Methods
 
-```{r MW Test}
+```{r MW Test, eval = reproList$computingTCGALIHCResults}
 ### Normalize Data
 groupMask <-  tcgaDataCleaned$group == tcgaDataCleaned$group[1] #Makes Data Binary
 dge <- edgeR::DGEList(counts= tcgaDataCleaned$counts)
@@ -341,7 +335,7 @@ saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 ```
 
 
-```{r Direct Permutation Test}
+```{r Direct Permutation Test, eval = reproList$computingTCGALIHCResults}
 nFlips <- 2000
 rn <- row.names(tcgaDataCleaned$counts)
 
@@ -374,7 +368,7 @@ rm(d, dds, dge, dgeDefault, X, pVals)
 ```
 
 
-```{r Flipscores}
+```{r Flipscores, eval = reproList$computingTCGALIHCResults}
 ### Compute Offsets using EdgeR
 rn <- row.names(tcgaDataCleaned$counts)
 d  <- edgeR::DGEList(counts = tcgaDataCleaned$counts)
@@ -412,13 +406,14 @@ rm(d, os, pVals, rn, t0, Y)
 
 # Visualizing Results
 ```{r Setup Visualization}
+tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
 namesList <- names(tcgaData$Results)
 LIHCRes <- as.data.frame(tcgaData$Results)
 
 colnames(LIHCRes) <- namesList
 
 ### Compute Rejected Genes and print number of Rejections for all Methods
-LIHCResDE <- LIHCRes <= 0.05
+LIHCResDE <- LIHCRes <= 0.01
 LIHCResDE[is.na(LIHCResDE)] <- F
 colSums(LIHCResDE, na.rm = T)
 ftable(as.data.frame(LIHCResDE))
@@ -427,17 +422,12 @@ ftable(as.data.frame(LIHCResDE))
 
 ```{r}
 corSpear <- cor(LIHCRes, method = "spearman", use  = "pairwise.complete.obs")
-xtable::xtable(as.matrix(corSpear)) ##return latex table
-```
-```{r}
+#xtable::xtable(as.matrix(corSpear)) ##return latex table
 as.matrix(corSpear)
-```
-
-
-```{r}
-mds <- MASS::isoMDS(1- corSpear +0.0001)
-ggplot(mapping = aes(x = mds$points[,1], y = mds$points[,2], col = row.names(mds$points))) +
+mds <- MASS::isoMDS(1- corSpear +0.00001)
+p1 <- ggplot(mapping = aes(x = mds$points[,1], y = mds$points[,2],
+                     col = row.names(mds$points))) +
   geom_point()
+
+
 ```
-
-
