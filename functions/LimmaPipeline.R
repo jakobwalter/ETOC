@@ -2,10 +2,10 @@ LimmaPipeline = function(Y, X, filtering = F, ...){
 
   design = model.matrix(~ X)
 
-  dge = edgeR::DGEList(counts=Y)
-  rn <- row.names(Y)
+  dge <- edgeR::DGEList(counts=Y)
+  rn  <- row.names(Y)
 
-  dge = edgeR::calcNormFactors(dge)
+  dge <- edgeR::calcNormFactors(dge)
 
   # filtering
   if (filtering){

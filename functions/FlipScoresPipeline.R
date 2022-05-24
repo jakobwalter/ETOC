@@ -33,7 +33,7 @@ FlipScoresPipeline = function(Y, X, family,
         mod0 <- flipscores::flipscores(Yi ~ X + offset(os),
                            family = "negbinom",
                            score_type = scoreType,
-                           n_flips = n_flips, to_be_tested = 2)
+                           n_flips = nFlips, to_be_tested = 2)
       }
       else if(family == "poisson"){
         mod0 <- flipscores::flipscores(Yi ~ X + offset(os),

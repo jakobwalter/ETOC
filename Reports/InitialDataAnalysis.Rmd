@@ -33,7 +33,7 @@ library("MASS")
 source(paste0("../functions/", "printProgress.R"))
 
 ### Specify which parts of the analysis are reproduced
-reproAll <- FALSE
+reproAll <- F
 reproList <- list("downloadingRawData" = FALSE | reproAll,
                    "computingTCGALIHCResults" = FALSE | reproAll)
 
@@ -82,6 +82,7 @@ if (reproList$downloadingRawData){
 }
 ```
 
+
 ```{r Check data}
 ### Create Mask with duplicate Samples
 duplicatedMask <- duplicated(TCGAData$patient)
@@ -111,21 +112,33 @@ MDSData <- limma::plotMDS(dge, labels = 1:ncol(dge), col = as.numeric(dge$sample
   labs(x = paste0("Leading logFC dim 1 (", round(MDSData$var.explained[1],3)*100, "%)"),
        y = paste0("Leading logFC dim 2 (", round(MDSData$var.explained[2], 3)*100, "%)"), 
        title = "MDS of TCGA-LIHC Data")
-  )
+  +
+  scale_color_discrete(name = "Condition", labels = c("Primary Tumor", 
+                                                      "Recurrent Tumor",
+                                                      "Normal Tissue")
+  ) +
+    theme(legend.position = "bottom")
+)
+  
 
-ggsave(fileName, MDSPlot, width = 10, height = 9, units = "cm")
+ggsave(fileName, MDSPlot, width = 12, height = 9, units = "cm")
 
 ### Remove Third Sample Type (Recurrent Tumor) and save processed data
 TCGAData$patientMaskDelete <- patientMaskDelete | TCGAData$sampleType == "Recurrent Tumor"
 
-#saveRDS(object = TCGAData,
-#          file = paste0(dataDir, "TCGALIHC.Rds"))
+saveRDS(object = TCGAData,
+          file = paste0(dataDir, "TCGALIHC.Rds"))
 
-rm(dge, MDSData, MDSPlot, TCGAData, duplicatedMask, keep, patientMask, 
-   patientMaskDelete)
+rm(dge, MDSData, MDSPlot, TCGAData, duplicatedMask, keep, patientMask, patientMaskDelete)
 ```
 
 We removed `nRemoved` samples to make our samples independent.
+
+```{r}
+table(tcgaDataCleaned$sampleType)
+length(tcgaDataCleaned$sampleType)
+```
+
 
 # Ch.4: Parametric Methods
 Now, let us run all parametric models. First, important the packages.
@@ -265,7 +278,7 @@ plotEst  <- ggplot(mapping = aes(x = pEst)) +
   labs(x = "p")
 plotBins <- ggplot(mapping = aes(x = pEst, y = sqrt(d1$tagwise.dispersion))) +
   geom_bin2d(bins = 16) +
-  geom_hline(yintercept = 0.25, col = "red") +
+  geom_hline(yintercept = sqrt(0.25), col = "red") +
   scale_y_sqrt() +
   labs(y = "BCV", x = "p") +
   scale_fill_gradient(trans = "sqrt",
@@ -406,6 +419,7 @@ rm(d, os, pVals, rn, t0, Y)
 
 # Visualizing Results
 ```{r Setup Visualization}
+dataDir <- "../data/"
 tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
 namesList <- names(tcgaData$Results)
 LIHCRes <- as.data.frame(tcgaData$Results)
@@ -413,21 +427,34 @@ LIHCRes <- as.data.frame(tcgaData$Results)
 colnames(LIHCRes) <- namesList
 
 ### Compute Rejected Genes and print number of Rejections for all Methods
-LIHCResDE <- LIHCRes <= 0.01
+LIHCResDE <- as.array(t(apply(LIHCRes, 1, p.adjust, method = "BH")) <= 0.01)
 LIHCResDE[is.na(LIHCResDE)] <- F
 colSums(LIHCResDE, na.rm = T)
+nrow(LIHCResDE)
+colSums(LIHCResDE, na.rm = T) / nrow(LIHCResDE)
 ftable(as.data.frame(LIHCResDE))
 ```
 
 
+
 ```{r}
 corSpear <- cor(LIHCRes, method = "spearman", use  = "pairwise.complete.obs")
-#xtable::xtable(as.matrix(corSpear)) ##return latex table
+xtable::xtable(as.matrix(corSpear)) ##return latex table
 as.matrix(corSpear)
 mds <- MASS::isoMDS(1- corSpear +0.00001)
 p1 <- ggplot(mapping = aes(x = mds$points[,1], y = mds$points[,2],
                      col = row.names(mds$points))) +
-  geom_point()
+  geom_point() +
+  labs(x = "x", y = "y", title = "MDS of 1 - Spearman correlation between all methods") +
+  scale_color_discrete(name = "Model")
 
+
+### Save Plot
+fileName <- paste("../plots/MDS_All", ".png", sep = "")
+ggsave(fileName, p1, width = 16, height = 8, units = "cm")
+```
+
+```{r}
 
 ```
+

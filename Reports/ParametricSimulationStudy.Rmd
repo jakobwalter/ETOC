@@ -1,0 +1,354 @@
+---
+title: "ETOC: Permutation Study"
+output:
+  html_document:
+    toc: true
+    theme: united
+---
+
+
+# Non-Parametric Permutation Study
+
+## Permutation Study
+
+```{r Setup}
+set.seed(123)
+library(dplyr)
+library(MASS)
+library(ggplot2)
+library(tidyr)
+
+### Load Helper Functions
+sapply(list.files("../functions/"), function(f) source(paste0("../functions/", f)))
+
+### Load Data
+dataDir <- "../data/"
+tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
+
+### Subset Data for two-group Comparison
+tcgaDataCleaned <- tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
+tcgaDataCleaned$counts <- tcgaData$counts[,!tcgaData$patientMaskDelete]
+tcgaDataCleaned$group  <- tcgaData$group[!tcgaData$patientMaskDelete]
+
+### Load p-values of all methods and convert to data frame
+namesList <- names(tcgaData$Results)
+LIHCRes <- as.data.frame(tcgaData$Results)
+colnames(LIHCRes) <- namesList
+
+### Compute Rejected Genes and print number of Rejections for all Methods
+LIHCResDE <- LIHCRes <= 0.01
+colSums(LIHCResDE, na.rm = T)
+
+### Rename Genes to Integers
+rownames(tcgaDataCleaned$counts) <- 1:nrow(tcgaDataCleaned$counts)
+
+### Load previous simulation results or create new list
+resFileName <- paste0(dataDir, "LIHCGenerationResults.Rds")
+if (file.exists(resFileName)){
+  permResults <- readRDS(resFileName)
+} else{
+  permResults <- list()
+}
+```
+
+
+# Generation: Equal Distributions
+
+```{r}
+### Loading Data an Helper Functions
+. <- sapply(list.files("../functions/"), function(f) source(paste0("../functions/", f)))
+glm.nb <- MASS::glm.nb
+dataDir <- "../data/"
+
+resFileName <- paste0(dataDir, "LIHCGenerationResultsH0.Rds")
+tcgaData   <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
+
+DeSize <- 100
+pGenes <- DeSize*5
+
+### Get Parameters for Simulation
+randInt <- sample(nrow(tcgaData$counts), 1000)
+d <- edgeR::DGEList(counts = tcgaData$counts[randInt,])
+rownames(d) <-  1:nrow(d)
+d <- edgeR::calcNormFactors(d)
+d <- edgeR::estimateDisp(d)
+phi <- d$tagwise.dispersion
+mu <- rowMeans(d$counts*d$samples$norm.factors)
+mu_1 <- mu_2 <-  mu[1:pGenes]
+phi_1 <- phi_2 <- phi[1:pGenes]
+
+### Create differential expression
+mu_2[1:(DeSize/2)] <- mu_2[1:(DeSize/2)]*2
+mu_2[((DeSize/2)+1):DeSize] <- mu_2[((DeSize/2)+1):DeSize]/2
+
+### Initiate
+genResults <-list()
+genResults$plot_data <- data.frame(mu_1 = mu_1,
+                        mu_2 = mu_2,
+                        phi_1 = phi_1,
+                        phi_2 = phi_2,
+                        de_mask = 1:pGenes <= DeSize)
+
+nList <- list("10" = 10, "40" = 40)
+nRepl <- 50 #ca. 17:00
+```
+
+
+```{r}
+t0 <- Sys.time()
+  ### For Each Sample Size n:
+  genResults$geneData <- lapply(nList, function(n){
+  print(n)
+  ### Inner Loop: Replicate n_repl times
+  replicate(nRepl,{
+    XYData <- SimulateNB(n, pGenes, mu_1 = mu_1, mu_2 = mu_2, phi_1 = phi_1, phi_2 = phi_1)
+    res    <- RunAllMethods(XYData$Y, XYData$X)
+    return(res)
+    })
+  })
+
+
+saveRDS(genResults, file = resFileName)
+print(Sys.time() - t0)
+rm(mu_1, mu_2, phi_1, phi_2)
+```
+
+## Plotting
+
+```{r}
+library(ggplot2)
+library(dplyr)
+data.dir <- "../data/"
+resFileName <- paste0(data.dir, "LIHCGenerationResultsH0.Rds")
+genResults <- readRDS( file = resFileName)
+t1_data <- GetT1Data(PlotData = genResults$plot_data,
+                     GeneData = genResults$geneData, 
+                     alphas = rep(0.05, 12))
+```
+
+
+```{r}
+title_name <- "Probability of Rejection under H_0"
+p1 <- t1_data %>% 
+  dplyr::filter(de_mask == F) %>%
+  ggplot(aes(x = name, y = value)) +
+  geom_boxplot()+
+  facet_wrap(~n) +
+  scale_x_discrete(guide = guide_axis(angle = 90)) +
+  labs(y = "P(p <= 0.05)", title = title_name) +
+  geom_hline(yintercept = 0.05) +
+  ylim(c(0, 0.5))
+
+file_name <- paste("../plots/GenH0", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
+
+ggsave(file_name, p1)
+```
+
+
+```{r}
+title_name <- "Probability of Rejection under H_A"
+p1 <- t1_data %>% 
+  dplyr::filter(de_mask == T) %>%
+  ggplot(aes(x = name, y = value)) +
+  geom_boxplot()+
+  facet_wrap(~n) +
+  scale_x_discrete(guide = guide_axis(angle = 90)) +
+  labs(y = "P(p <= 0.005)", title = title_name)
+
+file_name <- paste("../plots/GenH0", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
+
+ggsave(file_name, p1)
+```
+# Covariates
+
+```{r}
+### Loading Data an Helper Functions
+. <- sapply(list.files("../functions/"), function(f) source(paste0("../functions/", f)))
+glm.nb <- MASS::glm.nb
+dataDir <- "../data/"
+
+resFileName <- paste0(dataDir, "LIHCGenerationResultsH0.Rds")
+tcgaData   <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
+
+DeSize <- 10
+pGenes <- DeSize*5
+
+### Get Parameters for Simulation
+randInt <- sample(nrow(tcgaData$counts), 2000)
+d <- edgeR::DGEList(counts = tcgaData$counts[randInt,])
+rownames(d) <-  1:nrow(d)
+d <- edgeR::calcNormFactors(d)
+d <- edgeR::estimateDisp(d)
+phi <- d$tagwise.dispersion
+mu <- rowMeans(d$counts*d$samples$norm.factors)
+mu_1 <- mu_2 <-  mu[mu > 10][1:pGenes]
+phi_1 <- phi_2 <- phi[mu > 10][1:pGenes]
+
+### Create differential expression
+mu_2[1:(DeSize/2)] <- mu_2[1:(DeSize/2)]*2
+mu_2[((DeSize/2)+1):DeSize] <- mu_2[((DeSize/2)+1):DeSize]/2
+
+### Initiate
+genResults <-list()
+genResults$plot_data <- data.frame(mu_1 = mu_1,
+                        mu_2 = mu_2,
+                        phi_1 = phi_1,
+                        phi_2 = phi_2,
+                        de_mask = 1:pGenes <= DeSize)
+
+nList <- list("12" = 12, "40" = 40)
+nRepl <- 100 #ca. 17:00
+```
+
+
+
+```{r}
+edgeRPipelineCovariates <- function(XYData){
+  d <- edgeR::DGEList(counts = XYData$Y, group = XYData$X$beta)
+  design <- model.matrix(~XYData$X$gamma + as.factor(XYData$X$beta))
+  d <- calcNormFactors(d)
+  d <- edgeR::estimateDisp(d, design)
+  fit <- edgeR::glmQLFit(d, design)
+  qlf2vs1 <- glmQLFTest(fit, coef = 3)
+  qlf2vs1$table$PValue
+  
+}
+limmaPipelineCovariates <- function(XYData){
+  dge <- edgeR::DGEList(counts=XYData$Y)
+  design = model.matrix(~XYData$X$gamma + as.factor(XYData$X$beta))
+  dge <- edgeR::calcNormFactors(dge)
+  dge <- edgeR::estimateDisp(dge, design)
+  # Normalization (TMM followed by voom)
+  v   = limma::voom(dge, design, plot=FALSE)
+  
+  # Fit model to data given design
+  fit = limma::lmFit(v, design)
+  
+  #extract p-values from moderated t-statistic
+  fit = limma::eBayes(fit)
+  fit$p.value[,3]
+}
+DESeq2PipelineCovariates <- function(XYData){
+  X   <- data.frame("Sex" = as.factor(XYData$X$gamma),
+                    "Treatment" = as.factor(XYData$X$beta))
+  dds <- DESeq2::DESeqDataSetFromMatrix(XYData$Y,
+                                        colData = X,
+                                        design = ~ Sex + Treatment)
+  dds <- DESeq2::DESeq(dds, quiet = T)
+  DESeq2::results(dds)$pvalue
+}
+FlipScoresPipelineCovariates <- function(XYData, family = "poisson", scoreType = "standardized", nFlips = 40){
+  pVals <- sapply(1:nrow(XYData$Y), function(i) {
+
+    Yi <- XYData$Y[i,] #needed to avoid error in formula
+    tryCatch(expr = {
+      if(family == "negbinom"){
+        mod0 <- flipscores::flipscores(Yi ~ XYData$X$gamma + XYData$X$beta,
+                           family = "negbinom",
+                           score_type = scoreType,
+                           n_flips = nFlips, to_be_tested = 3)
+      }
+      else if(family == "poisson"){
+        mod0 <- flipscores::flipscores(Yi ~ XYData$X$gamma + XYData$X$beta,
+                           family = poisson,
+                           score_type = scoreType,
+                           n_flips = nFlips, to_be_tested = 3)
+      }
+
+      #extract p-value from summary
+      coef(summary(mod0))[3, 5]
+  },
+    error = function(e) {
+      cat("\r","Error in Gene ", i)
+      print(e)
+      print(Yi)
+      return(NA)
+    }
+    )
+  })
+}
+
+RunAllMethodsCovariates <- function(XYData){
+  suppressMessages(suppressWarnings({
+    res <- list()
+    res$Limma    <- limmaPipelineCovariates(XYData)
+    res$EdgeREt  <- edgeRPipelineCovariates(XYData)
+    res$DESeq2   <- DESeq2PipelineCovariates(XYData)
+    res$FsPB     <- FlipScoresPipelineCovariates(XYData, "poisson", scoreType = "basic", nFlips = 200)
+    res$FsPE     <- FlipScoresPipelineCovariates(XYData, "poisson", scoreType = "effective", nFlips = 200)
+    res$FsPS     <- FlipScoresPipelineCovariates(XYData, "poisson", scoreType = "standardized", nFlips = 200)
+    res$FsNBB     <- FlipScoresPipelineCovariates(XYData, "negbinom", scoreType = "basic", nFlips = 200)
+    res$FsNBE     <- FlipScoresPipelineCovariates(XYData, "negbinom", scoreType = "effective", nFlips = 200)
+    res$FsNBS     <- FlipScoresPipelineCovariates(XYData, "negbinom", scoreType = "standardized", nFlips = 200)
+  }))
+  return(res)
+}
+```
+
+
+
+
+
+```{r}
+genResults$geneData <- lapply(nList, function(n){
+  c <- 0
+  print(n)
+  tN <- Sys.time()
+  ### Inner Loop: Replicate n_repl times
+  replicate(nRepl,{
+    PrintProgress(c, nRepl, tN)
+    XYData <- SimulateNB(n, pGenes, mu1 = mu_1, mu2 = mu_2, phi1 = phi_1, phi2 = phi_1, beta = rnorm(pGenes, 0, 1))
+    res    <- RunAllMethodsCovariates(XYData)
+    c <<- c + 1
+    return(res)
+    })
+  })
+```
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+. <- sapply(list.files("../functions/"), function(f) source(paste0("../functions/", f)))
+data.dir <- "../data/"
+resFileName <- paste0(data.dir, "LIHCGenerationResultsH0.Rds")
+#genResults <- readRDS( file = resFileName)
+t1_data <- GetT1Data(PlotData = genResults$plot_data,
+                     GeneData = genResults$geneData, 
+                     alphas = rep(0.05, 12))
+```
+
+
+```{r}
+title_name <- "Probability of Rejection under H_0"
+p1 <- t1_data %>% 
+  dplyr::filter(de_mask == F) %>%
+  ggplot(aes(x = name, y = value)) +
+  geom_boxplot()+
+  facet_wrap(~n) +
+  scale_x_discrete(guide = guide_axis(angle = 90)) +
+  labs(y = "P(p <= 0.05)", title = title_name) +
+  geom_hline(yintercept = 0.05) +
+  ylim(c(0, 0.5))
+
+file_name <- paste("../plots/GenH0Covariates", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
+
+ggsave(file_name, p1)
+```
+
+```{r}
+title_name <- "Probability of Rejection under H_A"
+p1 <- t1_data %>% 
+  dplyr::filter(de_mask == T) %>%
+  ggplot(aes(x = name, y = value)) +
+  geom_boxplot()+
+  facet_wrap(~n) +
+  scale_x_discrete(guide = guide_axis(angle = 90)) +
+  labs(y = "P(p <= 0.05)", title = title_name) +
+  geom_hline(yintercept = 0.05)
+
+file_name <- paste("../plots/GenHACovariates", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
+
+ggsave(file_name, p1)
+```
+
