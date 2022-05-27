@@ -1,15 +1,15 @@
 GetPreds <- function(models, cutoffs){
   
-  newd <- data.frame(mu = seq(cutoffs$mu[1], cutoffs$mu[2], length.out = 200),
-                     phi = seq(cutoffs$phi[1], cutoffs$phi[2], length.out = 200),
+  newd <- data.frame(mu = seq(cutoffs$mu[1], cutoffs$mu[2], length.out = 500),
+                     phi = seq(cutoffs$phi[1], cutoffs$phi[2], length.out = 500),
                      corrMax = seq(cutoffs$corrMax[1], cutoffs$corrMax[2],
-                                   length.out = 200)
+                                   length.out = 500)
   )
   
   margin.terms <- all.vars(models[[1]]$formula)[2:4]
   model.terms <- paste0("s(", all.vars(models[[1]]$formula)[2:4], ")")
   
-  model.terms <- c("s(log(mu))", "s(phi)", "s(corrMax)")
+  model.terms <- c("s(sqrt(mu))", "s(sqrt(phi))", "s(corrMax)")
   
   
   preds <- lapply(1:length(model.terms), function(i){

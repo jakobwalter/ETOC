@@ -9,7 +9,7 @@ GetLinePlots <- function(preds, modelnames, alpha = 0.01, DE, title, ymax = 1){
       geom_line() +
       labs(x = var, y = "P(p <= 0.01)") +
       facet_wrap(~n) +
-      scale_y_continuous(limits = c(0, ymax))
+      scale_y_continuous(breaks = c(0, 0.01, 0.05, 0.1, 0.2, 0.5, 1), limits = c(0, ymax), trans = "sqrt", expand=c(0,0))
     
     if(DE == "NDE"){
       p1 + geom_hline(yintercept = alpha)
@@ -17,6 +17,8 @@ GetLinePlots <- function(preds, modelnames, alpha = 0.01, DE, title, ymax = 1){
       p1
     }
   })
+  plot_list[[1]] <- plot_list[[1]] + scale_x_continuous(trans = "sqrt", limits = c(0, 2900), breaks = c(0, 500, 1000, 2000, 3000), expand=c(0,0))
+  plot_list[[2]] <- plot_list[[2]] + scale_x_continuous(trans = "sqrt", limits = c(0, 4.5), breaks = c(0, 1, 2, 4), expand=c(0,0))
   
   plot_list[[1]] <- plot_list[[1]] + labs(title = title) +
     theme(legend.position="none")

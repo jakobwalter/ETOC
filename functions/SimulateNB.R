@@ -23,7 +23,7 @@ SimulateNB <- function(nSamples,
   Y_2 <- rnbinom(nGenes*nSamples/2, mu = mu2array, size = 1/phi2array)
   Y_2 <- matrix(Y_2, nrow = nSamples/2)
 
-  Y_all <-rbind(Y_1, Y_2) #+ exp(offset)
+  Y_all <-rbind(Y_1, Y_2) * offset
   colnames(Y_all) <- names(mu_1)
   mode(Y_all) <- "integer"
 
