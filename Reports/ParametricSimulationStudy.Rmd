@@ -65,7 +65,7 @@ dataDir <- "../data/"
 resFileName <- paste0(dataDir, "LIHCGenerationResultsH0.Rds")
 tcgaData   <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
 
-DeSize <- 300
+DeSize <- 150
 pGenes <- DeSize*3
 
 ### Get Parameters for Simulation
@@ -94,10 +94,6 @@ genResults$plot_data <- data.frame(mu_1 = mu_1,
 nList <- list("10" = 10, "40" = 40, "100" = 100)
 nRepl <- 200 #ca. 17:00
 ```
-```{r}
-
-```
-
 
 ```{r}
 t0 <- Sys.time()
@@ -133,7 +129,7 @@ resFileName <- paste0(data.dir, "LIHCGenerationResultsH0.Rds")
 genResults <- readRDS( file = resFileName)
 t1_data <- GetT1Data(PlotData = genResults$plot_data,
                      GeneData = genResults$geneData, 
-                     alphas = rep(0.05, 12))
+                     alphas = rep(0.01, 12))
 ```
 
 ```{r}
@@ -150,12 +146,13 @@ p1 <- t1_data %>%
   facet_wrap(~factor(n, levels = c(10, 40, 100))) +
   scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
   labs(y = "P(p <= 0.05)", title = title_name, x = "Model Name") +
-  geom_hline(yintercept = 0.05) +
-  ylim(c(0, 0.5))
+  geom_hline(yintercept = 0.01) +
+  ylim(c(0, 0.5)) +
+  scale_y_continuous(trans = "sqrt", expand = c(0,0), breaks = c(0, 0.01, 0.05, 0.1, 0.2, 0.3))
 
 file_name <- paste("../plots/GenH0", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
 
-ggsave(file_name, p1)
+ggsave(file_name, p1, width = 4, height = 3.5)
 p1
 ```
 
@@ -169,11 +166,12 @@ p1 <- t1_data %>%
   geom_boxplot()+
   facet_wrap(~factor(n, levels = c(10, 40, 100))) +
   scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
-  labs(y = "P(p <= 0.05)", title = title_name, x = "Model Name")
+  labs(y = "P(p <= 0.05)", title = title_name, x = "Model Name") +
+  scale_y_continuous(trans = "sqrt", expand = c(0,0), breaks = c(0, 0.01, 0.05, 0.1, 0.2, 0.3))
 
 file_name <- paste("../plots/GenH0", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
 
-ggsave(file_name, p1)
+ggsave(file_name, p1, width = 4, height = 3.5)
 p1
 ```
 # Covariates
@@ -187,7 +185,7 @@ dataDir <- "../data/"
 resFileName <- paste0(dataDir, "LIHCGenerationResultsH0.Rds")
 tcgaData   <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
 
-DeSize <- 200
+DeSize <- 100
 pGenes <- DeSize*3
 
 ### Get Parameters for Simulation
@@ -198,8 +196,8 @@ d <- edgeR::calcNormFactors(d)
 d <- edgeR::estimateDisp(d)
 phi <- d$tagwise.dispersion
 mu <- rowMeans(d$counts*d$samples$norm.factors)
-mu_1 <- mu_2 <-  mu[mu > 2][1:pGenes]
-phi_1 <- phi_2 <- phi[mu > 2][1:pGenes]
+mu_1 <- mu_2 <-  mu[mu > 1.5][1:pGenes]
+phi_1 <- phi_2 <- phi[mu > 1.5][1:pGenes]
 
 ### Create differential expression
 mu_2[1:(DeSize/2)] <- mu_2[1:(DeSize/2)]*2
@@ -214,8 +212,9 @@ genResults$plot_data <- data.frame(mu_1 = mu_1,
                         de_mask = 1:pGenes <= DeSize)
 
 nList <- list("12" = 12, "40" = 40, "100"= 100)
-nRepl <- 100 #ca. 17:00
+nRepl <- 200 #ca. 17:00
 ```
+
 
 
 
@@ -347,11 +346,12 @@ p1 <- t1_data %>%
   dplyr::filter(de_mask == F) %>%
   ggplot(aes(x = name, y = value)) +
   geom_boxplot()+
+  stat_summary(fun=mean, geom="point", shape=20, size=1, color="red", fill="red") +
   facet_wrap(~factor(n, levels = c(12, 40, 100))) +
   scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
   labs(y = "P(p <= 0.05)", title = title_name, x = "Model Name") +
   geom_hline(yintercept = 0.05) +
-  ylim(c(0, 0.5))
+  scale_y_continuous(trans = "sqrt", expand = c(0,0))
 
 file_name <- paste("../plots/GenH0Covariates", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
 

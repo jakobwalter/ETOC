@@ -90,7 +90,7 @@ rm(cMax, cAll)
 
 ### Set Simulation Parameters
 nRepl <- 200
-nList <- list("10" = 10,  "40" = 40)
+nList <- list("12" = 12,  "60" = 60)
 
 permResults$plotData$unfiltered <- plotData
 saveRDS(permResults, file = resFileName)
@@ -100,6 +100,7 @@ rm(plotData, tcgaData)
 
 
 ```{r Running Simulation w/o Filtering}
+#ca. 18h
 t0 <- Sys.time()    
 ### For Each Sample Size n:
 permResults$geneData$unfiltered <- lapply(nList, function(n){
