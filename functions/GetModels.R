@@ -1,4 +1,4 @@
-GetModels <- function(t1Data, formula, sp = c(0.5, 1, 1)){
+GetModels <- function(t1Data, formula, sp = c(0.05, 1, 0.9)){
   paramGrid <- expand.grid(Model = unique(t1Data$name),
                            n =  as.character(unique(t1Data$n)),
                            DE = c(T,F))

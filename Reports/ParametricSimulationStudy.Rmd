@@ -65,23 +65,23 @@ dataDir <- "../data/"
 resFileName <- paste0(dataDir, "LIHCGenerationResultsH0.Rds")
 tcgaData   <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
 
-DeSize <- 400
+DeSize <- 100
 pGenes <- DeSize*3
 
 ### Get Parameters for Simulation
-randInt <- sample(nrow(tcgaData$counts), 5000)
+randInt <- sample(nrow(tcgaData$counts), 2000)
 d <- edgeR::DGEList(counts = tcgaData$counts[randInt,])
 rownames(d) <-  1:nrow(d)
 d <- edgeR::calcNormFactors(d)
 d <- edgeR::estimateDisp(d)
 phi <- d$tagwise.dispersion
 mu <- rowMeans(d$counts*d$samples$norm.factors)
-mu_1 <- mu_2 <-  mu[1:pGenes]
-phi_1 <- phi_2 <- phi[1:pGenes]
+mu_1 <- mu_2 <-  mu[mu > 0.5][1:pGenes]
+phi_1 <- phi_2 <- phi[mu > 0.5][1:pGenes]
 
 ### Create differential expression
-mu_2[1:(DeSize/2)] <- mu_2[1:(DeSize/2)]*2
-mu_2[((DeSize/2)+1):DeSize] <- mu_2[((DeSize/2)+1):DeSize]/2
+mu_2[1:(DeSize/2)] <- mu_2[1:(DeSize/2)]*3
+mu_2[((DeSize/2)+1):DeSize] <- mu_2[((DeSize/2)+1):DeSize]/3
 
 ### Initiate
 genResults <-list()
@@ -91,7 +91,7 @@ genResults$plot_data <- data.frame(mu_1 = mu_1,
                         phi_2 = phi_2,
                         de_mask = 1:pGenes <= DeSize)
 
-nList <- list("10" = 10, "40" = 40, "100" = 100)
+nList <- list("10" = 12, "40" = 60, "100" = 120)
 nRepl <- 200 #ca. 17:00
 ```
 
@@ -132,9 +132,7 @@ t1_data <- GetT1Data(PlotData = genResults$plot_data,
                      alphas = rep(0.01, 12))
 ```
 
-```{r}
-labelOrder
-```
+
 
 ```{r}
 labelOrder <- row.names(genResults$geneData$"10")
@@ -145,10 +143,9 @@ p1 <- t1_data %>%
   geom_boxplot()+
   facet_wrap(~factor(n, levels = c(10, 40, 100))) +
   scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
-  labs(y = "P(p <= 0.05)", title = title_name, x = "Model Name") +
+  labs(y = "P(p <= 0.01)", title = title_name, x = "Model Name") +
   geom_hline(yintercept = 0.01) +
-  ylim(c(0, 0.5)) +
-  scale_y_continuous(trans = "sqrt", expand = c(0,0), breaks = c(0, 0.01, 0.05, 0.1, 0.2, 0.3))
+  scale_y_continuous(trans = "sqrt", expand = c(0,0), breaks = c(0, 0.01, 0.05, 0.1, 0.2, 0.4), limits = c(0, 0.4))
 
 file_name <- paste("../plots/GenH0", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
 
@@ -166,8 +163,8 @@ p1 <- t1_data %>%
   geom_boxplot()+
   facet_wrap(~factor(n, levels = c(10, 40, 100))) +
   scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
-  labs(y = "P(p <= 0.05)", title = title_name, x = "Model Name") +
-  scale_y_continuous(trans = "sqrt", expand = c(0,0), breaks = c(0, 0.01, 0.05, 0.1, 0.2, 0.3))
+  labs(y = "P(p <= 0.01)", title = title_name, x = "Model Name") +
+  scale_y_continuous(trans = "sqrt", expand = c(0,0), breaks = c(0, 0.01, 0.05, 0.1, 0.2,  0.4, 0.8, 1))
 
 file_name <- paste("../plots/GenH0", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
 
@@ -196,8 +193,8 @@ d <- edgeR::calcNormFactors(d)
 d <- edgeR::estimateDisp(d)
 phi <- d$tagwise.dispersion
 mu <- rowMeans(d$counts*d$samples$norm.factors)
-mu_1 <- mu_2 <-  mu[mu > 1][1:pGenes]
-phi_1 <- phi_2 <- phi[mu > 1][1:pGenes]
+mu_1 <- mu_2 <-  mu[mu > 0.5][1:pGenes]
+phi_1 <- phi_2 <- phi[mu > 0.5][1:pGenes]
 
 ### Create differential expression
 mu_2[1:(DeSize/2)] <- mu_2[1:(DeSize/2)]*2
@@ -333,15 +330,10 @@ resFileName <- paste0(data.dir, "LIHCGenerationResultsCov.Rds")
 genResults <- readRDS( file = resFileName)
 t1_data <- GetT1Data(PlotData = genResults$plot_data,
                      GeneData = genResults$geneData, 
-                     alphas = rep(0.05, 12))
-```
-
-```{r}
-genResults
-```
+                     alphas = rep(0.01, 12))
 
 
-```{r}
+
 labelOrder <- row.names(genResults$geneData$"10")
 title_name <- "Probability of Rejection under H0"
 p1 <- t1_data %>% 
@@ -351,8 +343,8 @@ p1 <- t1_data %>%
   stat_summary(fun=mean, geom="point", shape=20, size=1, color="red", fill="red") +
   facet_wrap(~factor(n, levels = c(12, 40, 100))) +
   scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
-  labs(y = "P(p <= 0.05)", title = title_name, x = "Model Name") +
-  geom_hline(yintercept = 0.05) +
+  labs(y = "P(p <= 0.01)", title = title_name, x = "Model Name") +
+  geom_hline(yintercept = 0.01) +
   scale_y_continuous(trans = "sqrt", expand = c(0,0))
 
 file_name <- paste("../plots/GenH0Covariates", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
@@ -369,7 +361,7 @@ p1 <- t1_data %>%
   geom_boxplot()+
   facet_wrap(~factor(n, levels = c(12, 40, 100))) +
   scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
-  labs(y = "P(p <= 0.05)", title = title_name, x = "Model Name")
+  labs(y = "P(p <= 0.01)", title = title_name, x = "Model Name")
 
 file_name <- paste("../plots/GenHACovariates", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
 

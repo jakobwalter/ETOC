@@ -17,6 +17,7 @@ library(dplyr)
 library(MASS)
 library(ggplot2)
 library(tidyr)
+library(cowplot)
 
 ### Load Helper Functions
 sapply(list.files("../functions/"), function(f) source(paste0("../functions/", f)))
@@ -35,9 +36,6 @@ namesList <- names(tcgaData$Results)
 LIHCRes <- as.data.frame(tcgaData$Results)
 colnames(LIHCRes) <- namesList
 
-### Compute Rejected Genes and print number of Rejections for all Methods
-LIHCResDE <- LIHCRes <= 0.01
-colSums(LIHCResDE, na.rm = T)
 
 ### Rename Genes to Integers
 rownames(tcgaDataCleaned$counts) <- 1:nrow(tcgaDataCleaned$counts)
@@ -57,13 +55,13 @@ if (file.exists(resFileName)){
 ### Not Differentially Expressed (NDe)
 LIHCResDE <- as.array(t(apply(LIHCRes, 1, p.adjust, method = "BH")) <= 0.005)
 LIHCResNDe <- LIHCRes > 0.1
-De <- rowSums(LIHCResDE, na.rm = T) >= 5
-NDe <- rowSums(LIHCResNDe, na.rm = T) >= 5
+De <- rowSums(LIHCResDE, na.rm = T) >= 6
+NDe <- rowSums(LIHCResNDe, na.rm = T) >= 6
 
 ### Get Random Selection of genes of a given size for a given ratio
-DeSize <- 1000
+DeSize <- 250
 De  <- sample(which(De), DeSize)
-NDe <- sample(which(NDe), DeSize*2)
+NDe <- sample(which(NDe), DeSize*4)
 YDe  <- tcgaDataCleaned$counts[De,]
 YNDe <- tcgaDataCleaned$counts[NDe,]
 YAll <- rbind(YDe, YNDe)
@@ -92,7 +90,7 @@ rm(cMax, cAll)
 nRepl <- 200
 nList <- list("12" = 12,  "60" = 60)
 
-permResults$plotData$unfiltered <- plotData
+permResults$plotData <- plotData
 saveRDS(permResults, file = resFileName)
 
 rm(plotData, tcgaData)
@@ -125,7 +123,7 @@ print(Sys.time() - t0)
 
 
 ```{r Running Simulation w Filtering}
-nRepl <- 400
+nRepl <- 200
 t0 <- Sys.time()   
 ### For Each Sample Size n:
 permResults$geneData$filtered <- lapply(nList, function(n){
@@ -165,6 +163,8 @@ print(Sys.time() - t0)
 
 # Creation of Plots
 
+
+
 ```{r}
 dataDir <- "../data/"
 tcgaData    <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
@@ -173,217 +173,172 @@ permResults <- readRDS(resFileName)
 sapply(list.files("../functions/"), function(f) source(paste0("../functions/", f)))
 ```
 
+```{r}
+names(permResults$geneData$unfiltered)
+```
 
-```{r  qq plot unfiltered}
-breaks <- c(0, 0.05, 0.1, 0.15, 0.2)
-pSeq <- seq(0, 0.2, by = 0.005)
-df <- lapply(permResults$geneData$unfiltered, function(i){
-  apply(i, 1, function(j){
-    df <- as.data.frame(j)[!permResults$plotData$unfiltered$deMask,]
-    df[is.na(df)] <- 1
-    df <- apply(df, 1, function(k){#
-      sapply(pSeq, function(p) mean(k < p, na.rm = T))
+```{r}
+GetQQPlot <- function(data, deMask){
+  ### Specify breaks of plot
+  breaks <- c(0, 0.05, 0.1, 0.15, 0.2)  
+  ### specify steps at which rejection rates should be computed
+  pSeq <- seq(0, 0.2, by = 0.001)
+  
+  ### For each sample size in data
+  df <- lapply(data, function(i){
+    ### For each method in data of sample size
+    apply(i, 1, function(j){
+      ###construct df and replace NA's with 1 (not rejected)
+      df <- as.data.frame(j)[!deMask,]
+      df[is.na(df)] <- 1
+      ###finally: loop through all replications, compute
+      sapply(pSeq, function(p) mean(df < p, na.rm = T))
+      })
     })
-    rowMeans(df, na.rm = T)
-  })
-})
-df <- as.data.frame(rbind(df[[1]], df[[2]]))
-df$n <- rep(c(10,40), each = nrow(df)/2)
-df$p <- pSeq
-p1_legend <- tidyr::pivot_longer(df, 1:9) %>%
-  ggplot(mapping = aes(x = p, y = value, col = name, linetype = name)) +
-  geom_line() +
-  geom_abline(intercept = 0, slope = 1) +
-  facet_wrap(~n) +
-  scale_x_continuous(breaks = breaks,
-                     labels = as.character(breaks)) +
-  labs(x = "Nominal Rejection Rate",
-       y = "Observed Rejection Rate")  +
-  theme(legend.position = "bottom", legend.title = element_blank())
+  ### Bind the two dataframes of the two sample sizes together
+  df <- as.data.frame(rbind(df[[1]], df[[2]]))
+  ### annotate data frame
+  df$n <- rep(names(data), each = nrow(df)/2)
+  df$p <- pSeq
+  
+  ### Get Legend
+  legend <- tidyr::pivot_longer(df, 1:9) %>%
+    ggplot(mapping = aes(x = p, y = value, col = name, linetype = name)) +
+    geom_line() +
+    facet_wrap(~n) +
+    theme(legend.position = "bottom", legend.title = element_blank())
+  legend <-cowplot::get_legend(legend)
+  
+  ### Plot qq-plots
+  plotQQ <- tidyr::pivot_longer(df, 1:9) %>%
+    ggplot(mapping = aes(x = p, y = value, col = name, linetype = name)) +
+    geom_line() +
+    geom_abline(intercept = 0, slope = 1) +
+    facet_wrap(~n) +
+    scale_x_continuous(breaks = breaks,
+                       labels = as.character(breaks)) +
+    labs(x = "Nominal Rejection Rate",
+         y = "Observed Rejection Rate")  +
+    theme(legend.position = "none", legend.title = element_blank())
+  
+  ### Plot factors
+  plotFactors <- tidyr::pivot_longer(df, 1:9) %>%
+    ggplot(mapping = aes(x = p, y = value/p, col = name, linetype = name)) +
+    geom_line() +
+    geom_abline(intercept = 0, slope = 0) +
+    facet_wrap(~n)  +
+    scale_y_log10(limits = c(1e-2, 1e2)) +
+    scale_x_continuous(breaks = breaks,
+                       labels = as.character(breaks)) +
+    labs(x = "Nominal Rejection Rate",
+         y = "Inflation Factor") +
+    theme(legend.position = "none", legend.title = element_blank())
+  
+  pAll <- plot_grid(plot_grid(plotQQ, plotFactors, ncol = 2), legend, nrow = 2, rel_heights = c(1, 0.2))
+  
+  return(pAll)
+}
+```
 
-p1 <- tidyr::pivot_longer(df, 1:9) %>%
-  ggplot(mapping = aes(x = p, y = value, col = name, linetype = name)) +
-  geom_line() +
-  geom_abline(intercept = 0, slope = 1) +
-  facet_wrap(~n) +
-  scale_x_continuous(breaks = breaks,
-                     labels = as.character(breaks)) +
-  labs(x = "Nominal Rejection Rate",
-       y = "Observed Rejection Rate")  +
-  theme(legend.position = "none", legend.title = element_blank())
 
-p2 <- tidyr::pivot_longer(df, 1:9) %>%
-  ggplot(mapping = aes(x = p, y = value/p, col = name, linetype = name)) +
-  geom_line() +
-  geom_abline(intercept = 0, slope = 0) +
-  facet_wrap(~n)  +
-  scale_y_log10() +
-  scale_x_continuous(breaks = breaks,
-                     labels = as.character(breaks)) +
-  labs(x = "Nominal Rejection Rate",
-       y = "Inflation Factor") +
-  theme(legend.position = "none", legend.title = element_blank())
-
-
-p_all <- cowplot::plot_grid(p1, p2, ncol = 2, align = "h", axis = "b")
-
+```{r}
+### Get QQ plots for Unfiltered Genes
 fileName <- paste("../plots/", 
                    "qqPlotUnfiltered", ".png", 
                    sep = "")
+pAll <- GetQQPlot(permResults$geneData$unfiltered, permResults$plotData$unfiltered$deMask)
+cowplot::save_plot(pAll, filename = fileName, ncol =2, base_width = 3, base_height = 4)
 
 
-legend <-cowplot::get_legend(p1_legend)
-p_all <- plot_grid(plot_grid(p1, p2, ncol = 2), legend, nrow = 2, rel_heights = c(1, 0.2))
-cowplot::save_plot(p_all, filename = fileName, ncol =2, base_width = 3, base_height = 4)
-```
-
-
-
-```{r}
-df <- as.data.frame(permResults$geneData$filtered$"12"[1,])
-mask <- rowSums(is.na(df))
-hist(mask, breaks = 100)
-mask <- mask < 200
-df <- df[!permResults$plotData$unfiltered$deMask & mask,]
-
-```
-
-
-
-```{r  qq plot filtered}
-breaks <- c(0, 0.05, 0.1, 0.15, 0.2)
-pSeq <- seq(0, 0.2, by = 0.005)
-df <- lapply(permResults$geneData$filtered, function(i){
-  apply(i, 1, function(j){
-    df <- as.data.frame(j)[!permResults$plotData$unfiltered$deMask,]
-    mask <- rowSums(is.na(df)) < 200
-    df <- df[mask,]
-    #df[is.na(df)] <- 1
-    df <- apply(df, 1, function(k){#
-      sapply(pSeq, function(p) mean(k < p, na.rm = T))
-    })
-    rowMeans(df, na.rm = T)
-  })
-})
-df <- as.data.frame(rbind(df[[1]], df[[2]]))
-df$n <- rep(c(10,40), each = nrow(df)/2)
-df$p <- pSeq
-p1_legend <- tidyr::pivot_longer(df, 1:9) %>%
-  ggplot(mapping = aes(x = p, y = value, col = name, linetype = name)) +
-  geom_line() +
-  geom_abline(intercept = 0, slope = 1) +
-  facet_wrap(~n) +
-  scale_x_continuous(breaks = breaks,
-                     labels = as.character(breaks)) +
-  labs(x = "Nominal Rejection Rate",
-       y = "Observed Rejection Rate")  +
-  theme(legend.position = "bottom", legend.title = element_blank())
-
-p1 <- tidyr::pivot_longer(df, 1:9) %>%
-  ggplot(mapping = aes(x = p, y = value, col = name, linetype = name)) +
-  geom_line() +
-  geom_abline(intercept = 0, slope = 1) +
-  facet_wrap(~n) +
-  scale_x_continuous(breaks = breaks,
-                     labels = as.character(breaks)) +
-  labs(x = "Nominal Rejection Rate",
-       y = "Observed Rejection Rate")  +
-  theme(legend.position = "none", legend.title = element_blank())
-
-p2 <- tidyr::pivot_longer(df, 1:9) %>%
-  ggplot(mapping = aes(x = p, y = value/p, col = name, linetype = name)) +
-  geom_line() +
-  geom_abline(intercept = 0, slope = 0) +
-  facet_wrap(~n)  +
-  scale_y_log10() +
-  scale_x_continuous(breaks = breaks,
-                     labels = as.character(breaks)) +
-  labs(x = "Nominal Rejection Rate",
-       y = "Inflation Factor") +
-  theme(legend.position = "none", legend.title = element_blank())
-
-
-p_all <- cowplot::plot_grid(p1, p2, ncol = 2, align = "h", axis = "b")
-
+### Get QQ plots for filtered Genes
 fileName <- paste("../plots/", 
                    "qqPlotFiltered", ".png", 
                    sep = "")
-
-
-legend <-cowplot::get_legend(p1_legend)
-p_all <- plot_grid(plot_grid(p1, p2, ncol = 2), legend, nrow = 2, rel_heights = c(1, 0.2))
-cowplot::save_plot(p_all, filename = fileName, ncol =2, base_width = 3, base_height = 4)
+pAll <- GetQQPlot(permResults$geneData$filtered, permResults$plotData$unfiltered$deMask)
+cowplot::save_plot(pAll, filename = fileName, ncol =2, base_width = 3, base_height = 4)
 ```
+
 
 ```{r}
-permResults$geneData$unfiltered$"12"
+GetFDRPlot <- function(data, deMask){
+  ### Loop through data w. different sample sizes
+  fdr <- lapply(data, function(nDf){
+    ### Loop through methods
+    fdrDf <- sapply(1:9, function(i){
+      
+      ### for each method, apply BH for each replication (in columns)
+      df <- as.data.frame(nDf[i,])
+      df <- apply(df, 2, p.adjust, method = "BH") <= 0.05
+      ### Compute FDP
+      fdr <- 1 - colSums(df[deMask,], na.rm = T) / colSums(df, na.rm = T)
+      names(fdr) <- NULL
+      fdr
+      })
+    ### division by zero --> NA = 0
+    fdrDf <- replace_na(fdrDf, 0)
+    colnames(fdrDf) <- row.names(data$"12")
+    fdrDf
+  })
+  ### bind results of different sample sizes together, append data for sample size
+  fdr <- as.data.frame(rbind(fdr[[1]], fdr[[2]]))
+  
+  return(fdr)
+  df$n <- rep(names(data), each = nrow(fdr)/2)
+  
+  ### extract label order (for plotting)
+  labelOrder <- row.names(data$"12")
+  
+  ### plot fdr
+  fdrPlot <- fdr %>% pivot_longer(cols = 1:9) %>%
+    ggplot(mapping = aes(x = name, y = value)) +
+    geom_boxplot() +
+    facet_wrap(~n) +
+    stat_summary(fun=mean, geom="point", shape=20, size=1, color="red", fill="red") +
+    geom_hline(yintercept = 0.05, col = "gold") +
+    scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
+    labs(title = "Observed FDP of all Methods \n", y = "FDP", x = "Model Name")
+  
+  ### Repeat the same steps for the specificity
+  nDe <- lapply(data, function(nDf){
+    nDeDf <- sapply(1:9, function(i){
+      df <- as.data.frame(nDf[i,])
+      df <- apply(df, 2, p.adjust, method = "BH") <= 0.05
+      nDe <- colSums(df[deMask,], na.rm = T) /
+        sum(deMask)
+      names(nDe) <- NULL
+      nDe
+      })
+    colnames(nDeDf) <- row.names(data$"12")
+    nDeDf
+  })
+  nDe <- as.data.frame(rbind(nDe[[1]], nDe[[2]]))
+  nDe$n <- rep(names(data), each = nrow(nDe)/2)
+  p2 <- nDe %>% pivot_longer(cols = 1:9) %>%
+    ggplot(mapping = aes(x = name, y = value)) +
+    geom_boxplot() +
+    facet_wrap(~n) +
+    scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder)+
+    labs(title = "Observed Sensitivity \nof all Methods", y = "Sensitivity", x = "Model Name")
+  
+  pAll <- cowplot::plot_grid(p1, p2, ncol = 2)
+  return(pAll)
+  }
 ```
+
 
 ```{r FDR Unfiltered}
 ### Unfiltered
-#permResults$alphaAdjusted <- GetEmpAlpha(permResults, 0.05)
-fdr <- lapply(permResults$geneData$unfiltered, function(nDf){
-  fdrDf <- sapply(1:9, function(i){
-    df <- as.data.frame(nDf[i,])
-    df <- apply(df, 2, p.adjust, method = "BH") <= 0.05
-    fdr <- 1 - colSums(df[permResults$plotData$unfiltered$deMask,], na.rm = T) / colSums(df, na.rm = T)
-    names(fdr) <- NULL
-    fdr
-  })
-  fdrDf <- replace_na(fdrDf, 0)
-  colnames(fdrDf) <- row.names(permResults$geneData$unfiltered$"12")
-  fdrDf
-})
-fdr <- as.data.frame(rbind(fdr[[1]], fdr[[2]]))
-fdr$n <- rep(c(10, 40), each = nrow(fdr)/2)
-
-labelOrder <- row.names(permResults$geneData$unfiltered$"12")
-
-p1 <- fdr %>% pivot_longer(cols = 1:9) %>%
-  ggplot(mapping = aes(x = name, y = value)) +
-  geom_boxplot() +
-  facet_wrap(~n) +
-  stat_summary(fun=mean, geom="point", shape=20, size=1, color="red", fill="red") +
-  geom_hline(yintercept = 0.05, col = "gold") +
-  scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
-  labs(title = "Observed FDP of all Methods \n", y = "FDP", x = "Model Name")
-
-
-nDe <- lapply(permResults$geneData$unfiltered, function(nDf){
-  nDeDf <- sapply(1:9, function(i){
-    df <- as.data.frame(nDf[i,])
-    df <- apply(df, 2, p.adjust, method = "BH") <= 0.05
-    nDe <- colSums(df[permResults$plotData$unfiltered$deMask,], na.rm = T) / sum(permResults$plotData$unfiltered$deMask)
-    names(nDe) <- NULL
-    nDe
-  })
-  colnames(nDeDf) <- row.names(permResults$geneData$unfiltered$"12")
-  nDeDf
-})
-
-nDe <- as.data.frame(rbind(nDe[[1]], nDe[[2]]))
-nDe$n <- rep(c(10, 40), each = nrow(fdr)/2)
-
-p2 <- nDe %>% pivot_longer(cols = 1:9) %>%
-  ggplot(mapping = aes(x = name, y = value)) +
-  geom_boxplot() +
-  facet_wrap(~n) +
-  scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder)+
-  labs(title = "Observed Sensitivity \nof all Methods", y = "Sensitivity", x = "Model Name")
-  
-
-
-pAll <- cowplot::plot_grid(p1, p2, ncol = 2)
-
+FDRPlotUnfiltered <- GetFDRPlot(data = permResults$geneData$unfiltered, 
+                                deMask = permResults$plotData$unfiltered$deMask)
 fileName <- paste("../plots/UnfilteredFDR", ".png", sep = "")
-ggsave(fileName, p1, width = 3.5, height = 4)
-
-cowplot::save_plot(fileName, pAll, ncol = 2, base_width = 3, base_height = 3.8)
+cowplot::save_plot(fileName, FDRPlotUnfiltered, ncol = 2, base_width = 3, base_height = 3.8)
 ```
 
 ```{r}
 labelOrder
 ```
+
+
 ```{r}
 df <- as.data.frame(permResults$geneData$filtered$"12"[1,])
 df <- apply(df, 2, function(c){
@@ -507,13 +462,13 @@ rm(t1DataAdjustedfiltered40, t1DataAdjustedUnfiltered40)
 
 
 ```{r Boxplots unfiltered}
-labelOrder <- row.names(permResults$geneData$unfiltered$"10")
-title_name <- "Probability of Rejection of NDE genes"
+labelOrder <- row.names(permResults$geneData$unfiltered$"12")
+title_name <- "Probability of Rejection of \nNDE genes"
 p1 <- t1Data$nominal$unfiltered %>% 
   dplyr::filter(deMask == F) %>%
   ggplot(aes(x = name, y = value)) +
   geom_boxplot()+
-  stat_summary(fun.y=mean, geom="point", shape=20, size=1, color="red", fill="red") +
+  stat_summary(fun=mean, geom="point", shape=20, size=1, color="red", fill="red") +
   facet_wrap(n~., scales = "free") +
   scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
   labs(y = "P(p <= 0.01)", title = title_name, x = "Model Name") +
@@ -521,8 +476,7 @@ p1 <- t1Data$nominal$unfiltered %>%
   scale_y_continuous(trans = "sqrt")
 
 
-
-title_name <- "Probability of Rejection of DE genes"
+title_name <- "Probability of Rejection of \nDE genes"
 p2 <- t1Data$nominal$unfiltered %>% 
   dplyr::filter(deMask == T) %>%
   ggplot(aes(x = name, y = value)) +
@@ -537,8 +491,43 @@ pAll <- cowplot::plot_grid(p1, p2, ncol = 2)
 
 fileName <- paste("../plots/UnfilteredT1", ".png", sep = "")
 
-cowplot::save_plot(fileName, pAll, ncol = 2, base_width = 3, base_height = 3.8)
+cowplot::save_plot(fileName, pAll, ncol = 2, base_width = 3.5, base_height = 4)
 ```
+
+```{r Boxplots filtered}
+labelOrder <- row.names(permResults$geneData$filtered$"12")
+title_name <- "Probability of Rejection of\nNDE genes"
+p1 <- t1Data$nominal$filtered %>% 
+  dplyr::filter(deMask == F) %>%
+  ggplot(aes(x = name, y = value)) +
+  geom_boxplot()+
+  stat_summary(fun=mean, geom="point", shape=20, size=1, color="red", fill="red") +
+  facet_wrap(n~., scales = "free") +
+  scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
+  labs(y = "P(p <= 0.01)", title = title_name, x = "Model Name") +
+  geom_hline(yintercept = a) +
+  scale_y_continuous(trans = "sqrt")
+
+
+title_name <- "Probability of Rejection of\nDE genes"
+p2 <- t1Data$nominal$filtered %>% 
+  dplyr::filter(deMask == T) %>%
+  ggplot(aes(x = name, y = value)) +
+  geom_boxplot()+
+  facet_wrap(~n) +
+  scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
+  labs(y = "P(p <= 0.01)", title = title_name, x = "Model Name") +
+  scale_y_continuous(trans = "sqrt")
+
+
+pAll <- cowplot::plot_grid(p1, p2, ncol = 2)
+
+fileName <- paste("../plots/FilteredT1", ".png", sep = "")
+
+cowplot::save_plot(fileName, pAll, ncol = 2, base_width = 3.5, base_height = 4)
+```
+
+
 
 ```{r}
 ### Power Boxplots
@@ -599,7 +588,7 @@ file_name <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), "Nomi
 ggsave(fileName, p1, width = 4, height = 5)
 ```
 
-```{r Rankings}
+```{r Rankings Unfiltered}
 title_name <- "Difference in Mean Ranks"
 res <- lapply(permResults$geneData$unfiltered, function(i){
   apply(i, 1, function(col){
@@ -610,7 +599,7 @@ res <- lapply(permResults$geneData$unfiltered, function(i){
 })
 
 res <- as.data.frame(rbind(res[[1]], res[[2]]))
-res$n <- rep(c(10, 40), each = nrow(res)/2)
+res$n <- rep(c(12, 60), each = nrow(res)/2)
 res <- pivot_longer(res, 1:9)
 
 p1 <- ggplot(res, aes(x = name, y = value)) +
@@ -619,13 +608,37 @@ p1 <- ggplot(res, aes(x = name, y = value)) +
   scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
   labs(y = "Difference in Meank Ranks", title = title_name, x = "Model Name")
 
-file_name <- paste("../plots/PermUF", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
+file_name <- paste("../plots/PermUnfiltered", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
 
 ggsave(file_name, p1, width = 3, height = 3.8)
 ```
 
 
+```{r Rankings Filtered}
+title_name <- "Difference in Mean Ranks"
+res <- lapply(permResults$geneData$filtered, function(i){
+  apply(i, 1, function(col){
+    df <- as.data.frame(col)
+    df <- apply(df, 2, rank, na.last = T)
+    apply(df, 2, function(col) abs(mean(col[permResults$plotData$unfiltered$deMask], na.rm = T) -
+                                     mean(col[!permResults$plotData$unfiltered$deMask])))
+  })
+})
 
+res <- as.data.frame(rbind(res[[1]], res[[2]]))
+res$n <- rep(c(12, 60), each = nrow(res)/2)
+res <- pivot_longer(res, 1:9)
+
+p1 <- ggplot(res, aes(x = name, y = value)) +
+  geom_boxplot() +
+  facet_wrap(~n)  +
+  scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
+  labs(y = "Difference in Meank Ranks", title = title_name, x = "Model Name")
+
+file_name <- paste("../plots/PermFiltered", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
+
+ggsave(file_name, p1, width = 3, height = 3.8)
+```
 
 
 
@@ -659,22 +672,22 @@ t1Preds$adjusted$unfiltered  <- GetPreds(t1Models$adjusted$unfiltered, cutoffs)
 
 ```{r Plots for Parametric Methods under H0}
 title_name <- "Parametric Methods under H0 without Filtering"
-p_all <- GetLinePlots(t1Preds$nominal$unfiltered, labelOrder[1:4], DE = "NDE", title =  title_name, ymax = 0.6)
+p_all <- GetLinePlots(t1Preds$nominal$unfiltered, labelOrder[1:4], DE = "NDE", title =  title_name, ymax = 0.8)
 file_name_H0 <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
 cowplot::save_plot(p_all, filename = file_name_H0, nrow =3, base_width = 7, base_height = 3)    
 
 title_name <- "Parametric Methods under HA without Filtering"
-p_all <- GetLinePlots(t1Preds$adjusted$unfiltered, labelOrder[1:4], DE = "DE", title =  title_name)
+p_all <- GetLinePlots(t1Preds$nominal$unfiltered, labelOrder[1:4], DE = "DE", title =  title_name, ymax = 1)
 file_name_H0 <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
 cowplot::save_plot(p_all, filename = file_name_H0, nrow =3, base_width = 7, base_height = 3)  
 
 title_name <- "Nonparametric Methods under H0 without Filtering"
-p_all <- GetLinePlots(t1Preds$nominal$unfiltered, labelOrder[5:9], DE = "NDE", title =  title_name, ymax = 0.6)
+p_all <- GetLinePlots(t1Preds$nominal$unfiltered, labelOrder[5:9], DE = "NDE", title =  title_name, ymax = 0.25)
 file_name_H0 <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
 cowplot::save_plot(p_all, filename = file_name_H0, nrow =3, base_width = 7, base_height = 3)    
 
 title_name <- "Nonparametric Methods under HA without Filtering"
-p_all <- GetLinePlots(t1Preds$adjusted$unfiltered, labelOrder[5:9], DE = "DE", title =  title_name)
+p_all <- GetLinePlots(t1Preds$nominal$unfiltered, labelOrder[5:9], DE = "DE", title =  title_name, ymax = 1)
 file_name_H0 <- paste("../plots/Perm", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
 cowplot::save_plot(p_all, filename = file_name_H0, nrow =3, base_width = 7, base_height = 3)    
 
