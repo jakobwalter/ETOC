@@ -2,7 +2,6 @@
 *.Rhistory
 *.RData
 *.Ruserdata
-*.Rds
-*.png
 .Rproj.user
 *.nb.html
+*.RDataTmp

@@ -89,15 +89,17 @@ if (reproList$downloadingRawData | !file.exists(paste0(dataDir, "TCGALIHC.Rds"))
 ```
 
 
+
 ```{r Check data}
 ### Create Mask with duplicate Samples
-duplicatedMask <- duplicated(TCGAData$patient)                                  
-nRemoved <- sum(duplicatedMask)
-duplicatedMask <- TCGAData$patient %in% TCGAData$patient[duplicatedMask]        
+duplicatedMask <- duplicated(TCGAData$patient) | duplicated(TCGAData$patient, fromLast = T) 
 
-### The duplicate samples are coming from paired data, for which we delete
-### the samples corresponding to the tumor.
-patientMaskDelete <- duplicatedMask & TCGAData$group == "Primary solid Tumor"   
+table(TCGAData$group[duplicatedMask])
+patientMaskDelete  <- (duplicatedMask & TCGAData$group == "Primary solid Tumor") |
+  (duplicatedMask & TCGAData$group == "Recurrent Solid Tumor")
+
+table(TCGAData$group[!patientMaskDelete])
+sum(duplicated(TCGAData$patient[!patientMaskDelete]))
 
 ### Let us now compute the normalization factors and plot the MDS of the data
 
@@ -135,7 +137,7 @@ MDSData <- limma::plotMDS(dge, labels = 1:ncol(dge), col = as.numeric(dge$sample
 ggsave(fileName, MDSPlot, width = 12, height = 9, units = "cm")
 
 ### Remove Third Sample Type (Recurrent Tumor) and save processed data
-TCGAData$patientMaskDelete <- patientMaskDelete | TCGAData$sampleType == "Recurrent Tumor"
+TCGAData$patientMaskDelete <- patientMaskDelete
 
 saveRDS(object = TCGAData,
           file = paste0(dataDir, "TCGALIHC.Rds"))
@@ -143,25 +145,28 @@ saveRDS(object = TCGAData,
 rm(dge, MDSData, MDSPlot, TCGAData, duplicatedMask, keep, patientMaskDelete)
 ```
 
-We removed `nRemoved` samples to make our samples independent.
 
 
 # Ch.4: Parametric Methods
 Now, let us run all parametric models. First, important the packages.
 ```{r Setup Parametric Methods, echo = F}
 ### Load Data and filter
-tcgaDataCleaned <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
+tcgaDataCleaned <- tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
+length(unique(tcgaDataCleaned$patient))
 
 table(tcgaDataCleaned$group)
 length(tcgaDataCleaned$group)
 
-tcgaDataCleaned$counts <- tcgaData$counts[,!tcgaData$patientMaskDelete]
-tcgaDataCleaned$group  <- tcgaData$group[!tcgaData$patientMaskDelete]
+tcgaDataCleaned$counts <- tcgaDataCleaned$counts[,!tcgaDataCleaned$patientMaskDelete]
+tcgaDataCleaned$group  <- tcgaDataCleaned$group[!tcgaDataCleaned$patientMaskDelete]
+tcgaDataCleaned$patient <- tcgaDataCleaned$patient[!tcgaDataCleaned$patientMaskDelete]
+
 
 table(tcgaDataCleaned$group)
 length(tcgaDataCleaned$group)
+
+length(unique(tcgaDataCleaned$patient))
 ```
- 
 
 ```{r Limma}
 ### Initialize DGEList Object
@@ -186,8 +191,8 @@ v05Filtered   <- limma::voom(dgeFiltered, design, plot=F, save.plot = T, span = 
 fit   <- limma::lmFit(v02, design)
 fit   <- limma::eBayes(fit, robust = T)
 pVals <- data.frame("pValue" = fit$p.value[,2])
-df    <- data.frame(row.names = rownames(tcgaData$counts),
-                    pValue = rep(NA, nrow(tcgaData$counts)))
+df    <- data.frame(row.names = rownames(tcgaDataCleaned$counts),
+                    pValue = rep(NA, nrow(tcgaDataCleaned$counts)))
 
 df[rownames(df) %in% rownames(pVals), 1] <- pVals$pValue
 
@@ -217,8 +222,8 @@ linesDf$filter <- c(rep(F, 3*length(v01$voom.line$x)),
   geom_point(mapping = aes(x = v01$voom.xy$x, y = v01$voom.xy$y)) +
   geom_line(mapping = aes(x = linesDf$x, y = linesDf$y, col = linesDf$span,
                           linetype = linesDf$filter)) +
-  labs(x = v01$voom.xy$xlab,
-       y = v01$voom.xy$ylab,
+  labs(x = "",
+       y = "",
        title = "voom: Mean-Variance Trend for different Spans",
        col = "Span",
        linetype = "Filter")
@@ -347,7 +352,7 @@ saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 
 # Ch. 5 Non-Parametric Methods
 
-```{r Direct Permutation Test, eval = reproList$computingTCGALIHCResults}
+```{r Basic Permutation Test}
 nFlips <- 2000
 rn <- row.names(tcgaDataCleaned$counts)
 
@@ -379,7 +384,7 @@ saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 rm(d, dds, dge, dgeDefault, X, pVals)
 ```
 
-```{r MW Test, eval = reproList$computingTCGALIHCResults}
+```{r MW Test}
 ### Normalize Data
 groupMask <-  tcgaDataCleaned$group == tcgaDataCleaned$group[1] #Makes Data Binary
 dge <- edgeR::DGEList(counts= tcgaDataCleaned$counts)
@@ -399,7 +404,7 @@ saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 
 
 
-```{r Flipscores, eval = reproList$computingTCGALIHCResults}
+```{r Flipscores}
 ### Compute Offsets using EdgeR
 rn <- row.names(tcgaDataCleaned$counts)
 d  <- edgeR::DGEList(counts = tcgaDataCleaned$counts)
@@ -435,6 +440,7 @@ saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 rm(d, os, pVals, rn, t0, Y)
 ```
 
+
 # Visualizing Results
 ```{r Setup Visualization}
 dataDir <- "../data/"
@@ -458,17 +464,25 @@ ftable(as.data.frame(LIHCResDE))
 
 
 
+```{r}
+
+```
+```{r}
+mds
+```
 
 ```{r}
 corSpear <- cor(LIHCRes, method = "spearman", use  = "pairwise.complete.obs")
 xtable::xtable(as.matrix(corSpear)) ##return latex table
 as.matrix(corSpear)
-mds <- MASS::isoMDS(1- corSpear +0.00001)
+mds <- MASS::isoMDS(1- abs(corSpear) + 1e-10, maxit = 200, tol = 1e-5)
 (p1 <- ggplot(mapping = aes(x = mds$points[,1], y = mds$points[,2],
-                     col = row.names(mds$points))) +
-  geom_point() +
-  labs(x = "x", y = "y", title = "MDS of 1 - Spearman correlation between all methods") +
-  scale_color_discrete(name = "Model")
+                            col = row.names(mds$points),
+                            shape = row.names(mds$points))) +
+  geom_point(size = 1.5, stroke = 1) +
+  labs(x = "dim 1", y = "dim 2", title = expression("MDS of 1 - |"*rho*"|")) +
+  scale_color_discrete(name = "Model", limits = names(LIHCRes)) +
+    scale_shape_manual(name = "Model", values = c(rep(c(1:4), 2), 15), limits = names(LIHCRes))
 )
 
 
@@ -486,21 +500,22 @@ keep  <- filterByExpr(dge)
 corSpear <- cor(LIHCRes[keep,], method = "spearman", use  = "pairwise.complete.obs")
 xtable::xtable(as.matrix(corSpear)) ##return latex table
 as.matrix(corSpear)
-mds <- MASS::isoMDS(1- corSpear +0.00001)
-p1 <- ggplot(mapping = aes(x = mds$points[,1], y = mds$points[,2],
-                     col = row.names(mds$points))) +
-  geom_jitter(width = 0.015, height = 0.01) +
-  labs(x = "x", y = "y", title = "MDS of 1 - Spearman correlation between all methods") +
-  scale_color_discrete(name = "Model")
-
+mds <- MASS::isoMDS(1- abs(corSpear) + 1e-10, maxit = 200, tol = 1e-5)
+(p1 <- ggplot(mapping = aes(x = mds$points[,1], y = mds$points[,2],
+                            col = row.names(mds$points),
+                            shape = row.names(mds$points))) +
+  geom_point(size = 1.5, stroke = 1) +
+  labs(x = "dim 1", y = "dim 2", title = expression("MDS of 1 - |"*rho*"|")) +
+  scale_color_discrete(name = "Model", limits = names(LIHCRes)) +
+    scale_shape_manual(name = "Model", values = c(rep(c(1:4), 2), 15), limits = names(LIHCRes))
+)
 
 ### Save Plot
 fileName <- paste("../plots/MDS_Filtered", ".png", sep = "")
 ggsave(fileName, p1, width = 16, height = 8, units = "cm")
-p1
 ```
 
 ```{r}
-#system('shutdown -s')
+system('shutdown -s')
 ```
 
