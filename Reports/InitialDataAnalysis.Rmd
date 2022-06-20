@@ -142,9 +142,11 @@ TCGAData$patientMaskDelete <- patientMaskDelete
 saveRDS(object = TCGAData,
           file = paste0(dataDir, "TCGALIHC.Rds"))
 
-rm(dge, MDSData, MDSPlot, TCGAData, duplicatedMask, keep, patientMaskDelete)
+#rm(dge, MDSData, MDSPlot, TCGAData, duplicatedMask, keep, patientMaskDelete)
 ```
-
+```{r}
+sum(filterByExpr(dge))
+```
 
 
 # Ch.4: Parametric Methods
@@ -448,6 +450,9 @@ tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
 namesList <- names(tcgaData$Results)
 LIHCRes <- as.data.frame(tcgaData$Results)
 
+dge   <- DGEList(counts = tcgaDataCleaned$counts,
+                 group  = tcgaDataCleaned$group)
+keep  <- filterByExpr(dge)
 
 colnames(LIHCRes) <- namesList
 
@@ -458,18 +463,13 @@ colSums(LIHCResDE, na.rm = T)
 nrow(LIHCResDE)
 colSums(LIHCResDE, na.rm = T) / nrow(LIHCResDE)
 ftable(as.data.frame(LIHCResDE))
+
+colSums(LIHCResDE[keep,])
 ```
 
 
 
 
-
-```{r}
-
-```
-```{r}
-mds
-```
 
 ```{r}
 corSpear <- cor(LIHCRes, method = "spearman", use  = "pairwise.complete.obs")
@@ -492,11 +492,7 @@ ggsave(fileName, p1, width = 16, height = 8, units = "cm")
 ```
 
 
-```{r}
-dge   <- DGEList(counts = tcgaDataCleaned$counts,
-                 group  = tcgaDataCleaned$group)
-keep  <- filterByExpr(dge)
-
+```{r Filtering}
 corSpear <- cor(LIHCRes[keep,], method = "spearman", use  = "pairwise.complete.obs")
 xtable::xtable(as.matrix(corSpear)) ##return latex table
 as.matrix(corSpear)
@@ -516,6 +512,6 @@ ggsave(fileName, p1, width = 16, height = 8, units = "cm")
 ```
 
 ```{r}
-system('shutdown -s')
+#system('shutdown -s')
 ```
 

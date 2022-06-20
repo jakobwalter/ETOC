@@ -59,9 +59,9 @@ De <- rowSums(LIHCResDE, na.rm = T) >= 6
 NDe <- rowSums(LIHCResNDe, na.rm = T) >= 6
 
 ### Get Random Selection of genes of a given size for a given ratio
-DeSize <- 300
+DeSize <- 400
 De  <- sample(which(De), DeSize)
-NDe <- sample(which(NDe), DeSize*4)
+NDe <- sample(which(NDe), DeSize*5)
 YDe  <- tcgaDataCleaned$counts[De,]
 YNDe <- tcgaDataCleaned$counts[NDe,]
 YAll <- rbind(YDe, YNDe)
@@ -239,6 +239,9 @@ GetQQPlot <- function(data, deMask){
   return(pAll)
 }
 ```
+```{r}
+permResults$plotData$
+```
 
 
 ```{r}
@@ -246,7 +249,7 @@ GetQQPlot <- function(data, deMask){
 fileName <- paste("../plots/", 
                    "qqPlotUnfiltered", ".png", 
                    sep = "")
-pAll <- GetQQPlot(permResults$geneData$unfiltered, permResults$plotData$unfiltered$deMask)
+pAll <- GetQQPlot(permResults$geneData$unfiltered, permResults$plotData$deMask)
 cowplot::save_plot(pAll, filename = fileName, ncol =2, base_width = 3, base_height = 4)
 
 
@@ -254,7 +257,7 @@ cowplot::save_plot(pAll, filename = fileName, ncol =2, base_width = 3, base_heig
 fileName <- paste("../plots/", 
                    "qqPlotFiltered", ".png", 
                    sep = "")
-pAll <- GetQQPlot(permResults$geneData$filtered, permResults$plotData$unfiltered$deMask)
+pAll <- GetQQPlot(permResults$geneData$filtered, permResults$plotData$deMask)
 cowplot::save_plot(pAll, filename = fileName, ncol =2, base_width = 3, base_height = 4)
 ```
 
@@ -262,31 +265,31 @@ cowplot::save_plot(pAll, filename = fileName, ncol =2, base_width = 3, base_heig
 ```{r FDR Unfiltered}
 ### Unfiltered
 FDRPlotUnfiltered <- GetFDRPlot(data = permResults$geneData$unfiltered, 
-                                deMask = permResults$plotData$unfiltered$deMask)
+                                deMask = permResults$plotData$deMask)
 fileName <- paste("../plots/UnfilteredFDR", ".png", sep = "")
 cowplot::save_plot(fileName, FDRPlotUnfiltered, ncol = 2, base_width = 3, base_height = 3.8)
 
 
 ### Filtered
-FDRPlotUnfiltered <- GetFDRPlot(data = permResults$geneData$filtered, 
-                                deMask = permResults$plotData$unfiltered$deMask)
-fileName <- paste("../plots/UnfilteredFDR", ".png", sep = "")
-cowplot::save_plot(fileName, FDRPlotUnfiltered, ncol = 2, base_width = 3, base_height = 3.8)
+FDRPlotFiltered <- GetFDRPlot(data = permResults$geneData$filtered, 
+                                deMask = permResults$plotData$deMask)
+fileName <- paste("../plots/FilteredFDR", ".png", sep = "")
+cowplot::save_plot(fileName, FDRPlotFiltered, ncol = 2, base_width = 3, base_height = 3.8)
 ```
 
 
 ```{r}
 a <- 0.01
-permResults$alphaAdjusted <- GetEmpAlpha(permResults, 0.01)
+#permResults$alphaAdjusted <- GetEmpAlpha(permResults, 0.01)
 ### Know, get type-I error for all genes using both the nominal level,
 ### As well as the different adjusted alpha levels
 t1Data <- list()
-t1Data$nominal$unfiltered      <- GetT1Data(PlotData = permResults$plotData$unfiltered,
+t1Data$nominal$unfiltered      <- GetT1Data(PlotData = permResults$plotData,
                                           GeneData = permResults$geneData$unfiltered, 
                                           alphas = rep(a, 12))
 
 ### Repeat for filtered data
-t1Data$nominal$filtered      <- GetT1Data(PlotData = permResults$plotData$unfiltered,
+t1Data$nominal$filtered      <- GetT1Data(PlotData = permResults$plotData,
                                           GeneData = permResults$geneData$filtered, 
                                           alphas = rep(a, 12))
 
@@ -427,7 +430,8 @@ res <- lapply(permResults$geneData$unfiltered, function(i){
   apply(i, 1, function(col){
     df <- as.data.frame(col)
     df <- apply(df, 2, rank)
-    apply(df, 2, function(col) abs(mean(col[permResults$plotData$unfiltered$deMask]) - mean(col[!permResults$plotData$unfiltered$deMask])))
+    apply(df, 2, function(col) abs(mean(col[permResults$plotData$deMask]) - 
+                                     mean(col[!permResults$plotData$deMask])))
   })
 })
 

@@ -65,7 +65,7 @@ dataDir <- "../data/"
 resFileName <- paste0(dataDir, "LIHCGenerationResults.Rds")
 tcgaData   <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
 
-DeSize <- 250
+DeSize <- 300
 pGenes <- DeSize*5
 
 ### Get Parameters for Simulation
@@ -76,8 +76,8 @@ d <- edgeR::calcNormFactors(d)
 d <- edgeR::estimateDisp(d)
 phi <- d$tagwise.dispersion
 mu <- rowMeans(d$counts*d$samples$norm.factors)
-mu_1 <- mu_2 <-  mu[mu > 0.5][1:pGenes]
-phi_1 <- phi_2 <- phi[mu > 0.5][1:pGenes]
+mu_1 <- mu_2 <-  mu[mu > 0.25][1:pGenes]
+phi_1 <- phi_2 <- phi[mu > 0.25][1:pGenes]
 
 ### Create differential expression
 mu_2[1:(DeSize/2)] <- mu_2[1:(DeSize/2)]*3
@@ -92,8 +92,9 @@ genResults$plot_data <- data.frame(mu_1 = mu_1,
                         de_mask = 1:pGenes <= DeSize)
 
 nList <- list("12" = 12, "60" = 60, "120" = 120)
-nRepl <- 5 #ca. 17:00
+nRepl <- 100 #ca. 17:00
 ```
+
 
 ```{r}
 t0 <- Sys.time()
@@ -135,8 +136,9 @@ t1_data <- GetT1Data(PlotData = genResults$plot_data,
 
 
 
+
 ```{r}
-labelOrder <- row.names(genResults$geneData$"12")
+labelOrder <- row.names(genResults$geneData$noCovariates$"12")
 title_name <- "Probability of Rejection under H0"
 p1 <- t1_data %>% 
   dplyr::filter(de_mask == F) %>%
@@ -210,7 +212,7 @@ genResults$plot_data <- data.frame(mu_1 = mu_1,
                         de_mask = 1:pGenes <= DeSize)
 
 nList <- list("12" = 12, "60" = 60, "120"= 120)
-nRepl <- 2 #ca. 17:00
+nRepl <- 50 #ca. 17:00
 ```
 
 
@@ -335,23 +337,26 @@ t1_data <- GetT1Data(PlotData = genResults$plot_data,
 
 
 
-labelOrder <- row.names(genResults$geneData$"10")
+labelOrder <- row.names(genResults$geneData$"12")
 title_name <- "Probability of Rejection under H0"
 p1 <- t1_data %>% 
   dplyr::filter(de_mask == F) %>%
   ggplot(aes(x = name, y = value)) +
   geom_boxplot()+
   stat_summary(fun=mean, geom="point", shape=20, size=1, color="red", fill="red") +
-  facet_wrap(~factor(n, levels = c(12, 40, 100))) +
+  facet_wrap(~factor(n, levels = c(12, 60, 120))) +
   scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
   labs(y = "P(p <= 0.01)", title = title_name, x = "Model Name") +
   geom_hline(yintercept = 0.01) +
-  scale_y_continuous(trans = "sqrt", expand = c(0,0))
+  scale_y_continuous(trans = "sqrt", expand = c(0,0), breaks = c(0, 0.01, 0.05, 0.1, 0.2,  0.4, 0.8, 1))
 
 file_name <- paste("../plots/GenH0Covariates", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
 
 ggsave(file_name, p1, width = 4, height = 3.5)
 p1
+```
+```{r}
+labelOrder
 ```
 
 ```{r}
@@ -360,9 +365,10 @@ p1 <- t1_data %>%
   dplyr::filter(de_mask == T) %>%
   ggplot(aes(x = name, y = value)) +
   geom_boxplot()+
-  facet_wrap(~factor(n, levels = c(12, 40, 100))) +
+  facet_wrap(~factor(n, levels = c(12, 60, 120))) +
   scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder) +
-  labs(y = "P(p <= 0.01)", title = title_name, x = "Model Name")
+  labs(y = "P(p <= 0.01)", title = title_name, x = "Model Name") +
+  scale_y_continuous(trans = "sqrt", expand = c(0,0), breaks = c(0, 0.01, 0.05, 0.1, 0.2,  0.4, 0.8, 1))
 
 file_name <- paste("../plots/GenHACovariates", gsub(" ", "_", title_name, fixed = T), ".png", sep = "")
 
