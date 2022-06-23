@@ -465,6 +465,7 @@ colSums(LIHCResDE, na.rm = T) / nrow(LIHCResDE)
 ftable(as.data.frame(LIHCResDE))
 
 colSums(LIHCResDE[keep,])
+nrow(LIHCResDE[keep,])
 ```
 
 

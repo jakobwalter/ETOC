@@ -65,8 +65,8 @@ dataDir <- "../data/"
 resFileName <- paste0(dataDir, "LIHCGenerationResults.Rds")
 tcgaData   <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
 
-DeSize <- 300
-pGenes <- DeSize*5
+DeSize <- 200
+pGenes <- DeSize*6
 
 ### Get Parameters for Simulation
 randInt <- sample(nrow(tcgaData$counts), 10000)
@@ -76,8 +76,8 @@ d <- edgeR::calcNormFactors(d)
 d <- edgeR::estimateDisp(d)
 phi <- d$tagwise.dispersion
 mu <- rowMeans(d$counts*d$samples$norm.factors)
-mu_1 <- mu_2 <-  mu[mu > 0.25][1:pGenes]
-phi_1 <- phi_2 <- phi[mu > 0.25][1:pGenes]
+mu_1 <- mu_2 <-  mu[mu > 0.1][1:pGenes]
+phi_1 <- phi_2 <- phi[mu > 0.1][1:pGenes]
 
 ### Create differential expression
 mu_2[1:(DeSize/2)] <- mu_2[1:(DeSize/2)]*3
@@ -185,8 +185,8 @@ dataDir <- "../data/"
 resFileName <- paste0(dataDir, "LIHCGenerationResults.Rds")
 tcgaData   <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
 
-DeSize <- 250
-pGenes <- DeSize*5
+DeSize <- 200
+pGenes <- DeSize*6
 
 ### Get Parameters for Simulation
 randInt <- sample(nrow(tcgaData$counts), 5000)
@@ -196,8 +196,8 @@ d <- edgeR::calcNormFactors(d)
 d <- edgeR::estimateDisp(d)
 phi <- d$tagwise.dispersion
 mu <- rowMeans(d$counts*d$samples$norm.factors)
-mu_1 <- mu_2 <-  mu[mu > 0.5][1:pGenes]
-phi_1 <- phi_2 <- phi[mu > 0.5][1:pGenes]
+mu_1 <- mu_2 <-  mu[mu > 0.1][1:pGenes]
+phi_1 <- phi_2 <- phi[mu > 0.1][1:pGenes]
 
 ### Create differential expression
 mu_2[1:(DeSize/2)] <- mu_2[1:(DeSize/2)]*2
@@ -212,7 +212,7 @@ genResults$plot_data <- data.frame(mu_1 = mu_1,
                         de_mask = 1:pGenes <= DeSize)
 
 nList <- list("12" = 12, "60" = 60, "120"= 120)
-nRepl <- 50 #ca. 17:00
+nRepl <- 100 #ca. 17:00
 ```
 
 
