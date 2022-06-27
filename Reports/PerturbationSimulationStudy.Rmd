@@ -230,7 +230,7 @@ GetQQPlot <- function(data, deMask){
     theme(legend.position = "none", legend.title = element_blank())
   
   ## create title and put plots together
-  title <- ggdraw() + draw_label("Nominal vs. Observed Type I Error Rates", hjust = 1)
+  title <- ggdraw() + draw_label("Nominal vs. Observed Type I Error Rates", hjust = 0.71)
   pAll <- plot_grid(plot_grid(plotQQ, plotFactors, ncol = 2), legend, nrow = 2, rel_heights = c(1, 0.2))
   pAll <- plot_grid(title, pAll, ncol=1, rel_heights=c(0.075, 1)) 
   
