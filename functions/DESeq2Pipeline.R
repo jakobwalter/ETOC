@@ -1,6 +1,8 @@
 DESeq2Pipeline = function(Y, X, filtering = F, verbose = F, ...){
+  ### Run complete DESeq2 pipeline without independent Filtering so that it returns
+  ### unadjusted p-values for all genes
+  
   rn <- row.names(Y)
-  #estimation of overdispersion
   X   <- data.frame("Treatment" = as.factor(X))
   dds <- DESeq2::DESeqDataSetFromMatrix(Y,
                                         colData = X,

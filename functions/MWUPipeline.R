@@ -14,7 +14,7 @@ MWUPipeline = function(Y, X, roundDigits = 0, filtering = F, ...){
 
   ### Compute counts per million normalized by library sizes
   dge <- edgeR::calcNormFactors(dge, method="TMM")
-  dgeCpm <- round(edgeR::cpm(dge), roundDigits)
+  dgeCpm <- edgeR::cpm(dge)
 
   ### Apply Wilcoxon Test to All Genes using mask
   pVals <- sapply(1:nrow(dgeCpm), function(i) {

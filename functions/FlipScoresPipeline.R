@@ -6,7 +6,7 @@ FlipScoresPipeline = function(Y, X, family,
 
   rn <- row.names(X)
 
-  #compute Offset
+  ### compute Offset using TMM
   d <- edgeR::DGEList(counts = Y)
   d <- edgeR::calcNormFactors(d)
   os <- edgeR::getOffset(d)
@@ -19,12 +19,12 @@ FlipScoresPipeline = function(Y, X, family,
     os <- edgeR::getOffset(d)
   }
 
+  ### normalize X so that it is -1 or 1
   X <- (X == X[1])*2-1
 
   Y <- d$counts
-  #os <- log(colMeans(X))
 
-  #loop through columns and apply flipscores test to each
+  ### loop through columns and apply flipscores test to each
   pVals <- sapply(1:nrow(Y), function(i) {
 
     Yi <- Y[i,] #needed to avoid error in formula

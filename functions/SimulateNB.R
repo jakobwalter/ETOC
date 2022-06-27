@@ -14,19 +14,23 @@ SimulateNB <- function(nSamples,
   mu1array <- t(array(mu1, dim = c(nGenes, nSamples/2))) * betaArray
   phi1array <- t(array(phi1, dim = c(nGenes, nSamples/2)))
   
+  ### sample from NB distribution and reshape it to matrix
   Y_1 <- rnbinom(nGenes*nSamples/2, mu = mu1array, size = 1/phi1array)
   Y_1 <- matrix(Y_1, nrow = nSamples/2)
   
   mu2array <- t(array(mu2, dim = c(nGenes, nSamples/2))) * betaArray
   phi2array <- t(array(phi2, dim = c(nGenes, nSamples/2)))
 
+  ### sample from NB distribution and reshape it to matrix
   Y_2 <- rnbinom(nGenes*nSamples/2, mu = mu2array, size = 1/phi2array)
   Y_2 <- matrix(Y_2, nrow = nSamples/2)
 
+  ### create different sample sizes and round back to integer
   Y_all <-rbind(Y_1, Y_2) * offset
   colnames(Y_all) <- names(mu_1)
   mode(Y_all) <- "integer"
 
+  ### create covariate
   X_all <- rep(c(-1,1), each = nSamples/2)
 
   if(all(beta ==0)){

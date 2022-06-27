@@ -1,5 +1,6 @@
 EdgeRPipeline = function(Y, X, filtering = F, test, ...){
-  #Takes X, a table of counts and Y, a factor with two levels.
+  
+  ### Run complete EdgeR pipeline, works with both exact and QL test
 
   design <- model.matrix(~ X)
   dge <- edgeR::DGEList(counts=Y,
@@ -14,7 +15,7 @@ EdgeRPipeline = function(Y, X, filtering = F, test, ...){
     rm(keep)
   }
 
-  # Normalization (TMM followed by voom)
+  ### Normalization (TMM) and estimation of dispersion w. shrinkage
   dge <- edgeR::calcNormFactors(dge)
   dge <- edgeR::estimateDisp(dge)
 

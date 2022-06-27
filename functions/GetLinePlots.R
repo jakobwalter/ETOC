@@ -1,4 +1,5 @@
 GetLinePlots <- function(preds, modelnames, alpha = 0.01, DE, title, ymax = 1){
+  ##create plots for all parameters
   plot_list <- lapply(names(preds), function(var) {
     df <-preds[[var]] %>%
       tidyr::separate(col = name, into = c("Model", "n", "D"), sep = "_") %>%

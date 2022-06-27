@@ -1,13 +1,12 @@
 DirectPermutationsPipeline <- function(Y, X, nFlips, filtering = F, verbose = F){
 
   rn <- row.names(X)
-
-  #compute Offset
+  ### compute Offset
   d <- edgeR::DGEList(counts = X)
   d <- edgeR::calcNormFactors(d)
   os <- edgeR::getOffset(d)
 
-  # filtering
+  ### filtering
   if (filtering){
     keep = edgeR::filterByExpr(d)
     d <- d[keep,]
@@ -18,12 +17,13 @@ DirectPermutationsPipeline <- function(Y, X, nFlips, filtering = F, verbose = F)
   Y <- Y == Y[1]
 
   pVals <- sapply(1:nrow(X), function(i){
-    #Optionally print progress
+    ### Optionally print progress
     if (verbose){
       if(i %% 50 == 0){
         cat("\r", round(i/nrow(X), 3))
       }
     }
+    ### compute absolute difference in means for all permutations
 
     meanDiffs    <- numeric(nFlips)
     meanDiffs[1] <- abs(mean(X[i,Y == T]) - mean(X[i,Y == F]))
@@ -31,10 +31,12 @@ DirectPermutationsPipeline <- function(Y, X, nFlips, filtering = F, verbose = F)
       yj <- sample(Y)
       meanDiffs[j] <- abs(mean(X[i,yj == T]) - mean(X[i,yj  == F]))
     }
+    ### compute permutation p-value
     pvPerm <- (sum(meanDiffs[1] <= meanDiffs))/nFlips
     return(pvPerm)
   })
 
+  ### pad with NAs when filtering is used
   if (filtering){
     df <- data.frame(row.names = rn, pValue = rep(NA, length(rn)))
     df[keep, 1] <- pVals

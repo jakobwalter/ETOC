@@ -11,6 +11,7 @@ output:
 ### Potentially, we will need the developer version of some packages:
 
 #devtools::install_github("BioinformaticsFMRP/TCGAbiolinks")
+#devtools::install_github("livioivil/flipscores")
 #BiocManager::install("BioinformaticsFMRP/TCGAbiolinksGUI.data")
 #BiocManager::install("BioinformaticsFMRP/TCGAbiolinks")
 ```
@@ -136,17 +137,14 @@ MDSData <- limma::plotMDS(dge, labels = 1:ncol(dge), col = as.numeric(dge$sample
   
 ggsave(fileName, MDSPlot, width = 12, height = 9, units = "cm")
 
-### Remove Third Sample Type (Recurrent Tumor) and save processed data
+### Save processed data
 TCGAData$patientMaskDelete <- patientMaskDelete
-
 saveRDS(object = TCGAData,
           file = paste0(dataDir, "TCGALIHC.Rds"))
 
-#rm(dge, MDSData, MDSPlot, TCGAData, duplicatedMask, keep, patientMaskDelete)
+#rm(MDSData, MDSPlot, duplicatedMask, keep, patientMaskDelete)
 ```
-```{r}
-sum(filterByExpr(dge))
-```
+
 
 
 # Ch.4: Parametric Methods
@@ -224,9 +222,9 @@ linesDf$filter <- c(rep(F, 3*length(v01$voom.line$x)),
   geom_point(mapping = aes(x = v01$voom.xy$x, y = v01$voom.xy$y)) +
   geom_line(mapping = aes(x = linesDf$x, y = linesDf$y, col = linesDf$span,
                           linetype = linesDf$filter)) +
-  labs(x = "",
-       y = "",
-       title = "voom: Mean-Variance Trend for different Spans",
+  labs(x = "log2(y + 0.5)",
+       y = expression(sqrt(sigma)),
+    title = "voom: Mean-Variance Trend for different Spans",
        col = "Span",
        linetype = "Filter")
 )
@@ -235,8 +233,6 @@ linesDf$filter <- c(rep(F, 3*length(v01$voom.line$x)),
 fileName <- paste("../plots/voomLine", ".png", sep = "")
 ggsave(fileName, linesPlot, width = 16, height = 8, units = "cm")
 
-rm(design, df, dge, dgeFiltered, fit, linesDf, linesPlot, pVals, v01,
-   v01Filtered, v02, v02Filtered, v05, v05Filtered, keep, fileName)
 ```
 
 
@@ -322,7 +318,7 @@ rm(d, d1, design, dgeUnshrunken, p4, pAll, plotBins, plotEst, plotTrue, y, group
 ```
 
 
-```{r EdgeR QLM Test, eval = reproList$computingTCGALIHCResults}
+```{r EdgeR QL Test}
 design <- model.matrix(~ tcgaDataCleaned$group)
 ### Normalize Data, Fit Model and Compute tests
 fit <- glmQLFit(dgeDefault, design)
@@ -335,7 +331,7 @@ saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 
 
 
-```{r DESeq2, eval = reproList$computingTCGALIHCResults}
+```{r DESeq2}
 ### Initialize Object
 Y   <- data.frame("treatment" = as.factor(tcgaDataCleaned$group))
 dds <- DESeq2::DESeqDataSetFromMatrix(tcgaDataCleaned$counts,
@@ -404,8 +400,6 @@ saveRDS(tcgaData, paste0(dataDir, "TCGALIHC.Rds"))
 
 
 
-
-
 ```{r Flipscores}
 ### Compute Offsets using EdgeR
 rn <- row.names(tcgaDataCleaned$counts)
@@ -444,15 +438,20 @@ rm(d, os, pVals, rn, t0, Y)
 
 
 # Visualizing Results
+
+
 ```{r Setup Visualization}
 dataDir <- "../data/"
-tcgaData <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
-namesList <- names(tcgaData$Results)
-LIHCRes <- as.data.frame(tcgaData$Results)
+tcgaDataCleaned <- readRDS(paste0(dataDir, "TCGALIHC.Rds"))
+tcgaDataCleaned$counts <- tcgaDataCleaned$counts[,!tcgaDataCleaned$patientMaskDelete]
+tcgaDataCleaned$group  <- tcgaDataCleaned$group[!tcgaDataCleaned$patientMaskDelete]
+namesList <- names(tcgaDataCleaned$Results)
+LIHCRes <- as.data.frame(tcgaDataCleaned$Results)
 
-dge   <- DGEList(counts = tcgaDataCleaned$counts,
+
+dge   <- edgeR::DGEList(counts = tcgaDataCleaned$counts,
                  group  = tcgaDataCleaned$group)
-keep  <- filterByExpr(dge)
+keep  <- edgeR::filterByExpr(dge)
 
 colnames(LIHCRes) <- namesList
 
@@ -467,7 +466,6 @@ ftable(as.data.frame(LIHCResDE))
 colSums(LIHCResDE[keep,])
 nrow(LIHCResDE[keep,])
 ```
-
 
 
 
@@ -512,7 +510,4 @@ fileName <- paste("../plots/MDS_Filtered", ".png", sep = "")
 ggsave(fileName, p1, width = 16, height = 8, units = "cm")
 ```
 
-```{r}
-#system('shutdown -s')
-```
 

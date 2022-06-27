@@ -54,6 +54,7 @@ GetFDRPlot <- function(data, deMask){
     ggplot(mapping = aes(x = name, y = value)) +
     geom_boxplot() +
     facet_wrap(~n) +
+    stat_summary(fun=mean, geom="point", shape=20, size=1, color="red", fill="red") +
     scale_x_discrete(guide = guide_axis(angle = 90), limits = labelOrder)+
     labs(title = "Observed Sensitivity \nof all Methods", y = "Sensitivity", x = "Model Name")
   

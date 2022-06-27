@@ -1,5 +1,7 @@
 GetPreds <- function(models, cutoffs){
+  ### Get Predictions from all GAMs, seperately for all parameters
   
+  ### create sequences between the parameter cutoffs
   newd <- data.frame(mu = seq(cutoffs$mu[1], cutoffs$mu[2], length.out = 500),
                      phi = seq(cutoffs$phi[1], cutoffs$phi[2], length.out = 500),
                      corrMax = seq(cutoffs$corrMax[1], cutoffs$corrMax[2],
@@ -14,6 +16,7 @@ GetPreds <- function(models, cutoffs){
   
   preds <- lapply(1:length(model.terms), function(i){
     pred <- lapply(models, function(m){
+      ### exclude all but parameter of interest from prediction
       mgcv::predict.gam(m, newd, exclude = model.terms[-i], type = "response")
     })
     
